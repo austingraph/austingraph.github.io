@@ -9,6 +9,44 @@
 </head>
 <body>
   <div id="map"></div>
+
+  <aside id="panel" aria-hidden="true">
+    <button id="panel-close" aria-label="Close panel">&times;</button>
+    <header>
+      <h1 id="panel-parcel-id">—</h1>
+      <p class="panel-sub">TCAD Property ID</p>
+    </header>
+
+    <section>
+      <h2>Dimensions</h2>
+      <dl>
+        <div><dt>Area</dt><dd id="dim-area">—</dd></div>
+        <div><dt>Perimeter</dt><dd id="dim-perimeter">—</dd></div>
+        <div><dt>Extent</dt><dd id="dim-extent">—</dd></div>
+      </dl>
+    </section>
+
+    <section>
+      <h2>Property</h2>
+      <dl>
+        <div><dt>Address</dt><dd id="meta-address">—</dd></div>
+        <div><dt>Legal</dt><dd id="meta-legal">—</dd></div>
+        <div><dt>TCAD Acres</dt><dd id="meta-acres">—</dd></div>
+        <div><dt>Geo ID</dt><dd id="meta-geoid">—</dd></div>
+      </dl>
+      <p id="meta-status" class="panel-note"></p>
+    </section>
+
+    <section>
+      <h2>Connections</h2>
+      <p class="panel-note">Graph &amp; document connections coming soon.</p>
+    </section>
+
+    <footer>
+      <a id="panel-tcad-link" href="#" target="_blank" rel="noopener">View on TCAD &rarr;</a>
+    </footer>
+  </aside>
+
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <script src="https://unpkg.com/pmtiles@3.2.0/dist/pmtiles.js"></script>
   <script src="app.js"></script>
