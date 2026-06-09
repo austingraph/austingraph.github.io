@@ -77,6 +77,11 @@ begin
   -- pgsql-http defaults to 5s; ArcGIS GeoJSON pages can be ~20-40 MB.
   perform http_set_curlopt('CURLOPT_TIMEOUT',        '90');
   perform http_set_curlopt('CURLOPT_CONNECTTIMEOUT', '10');
+  -- The county GIS server drops connections from default curl UAs
+  -- (SSL_ERROR_SYSCALL); present a browser UA and pin TLS 1.2.
+  perform http_set_curlopt('CURLOPT_USERAGENT',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36');
+  perform http_set_curlopt('CURLOPT_SSLVERSION', '6');  -- CURL_SSLVERSION_TLSv1_2
 
   select next_offset, completed into v_offset, v_done
     from public.parcels_load_state where id = 1;
@@ -96,7 +101,9 @@ begin
         || '&returnGeometry=true'
         || '&outSR=4326'
         || '&f=geojson'
-        || '&orderByFields=PROP_ID'
+        -- NOTE: orderByFields=PROP_ID triggers a server bug that nulls every
+        -- attribute in the response; OBJECTID ordering works (verified 2026-06).
+        || '&orderByFields=OBJECTID'
         || '&resultRecordCount=' || p_limit
         || '&resultOffset='      || v_offset;
 
