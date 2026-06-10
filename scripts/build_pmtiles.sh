@@ -33,13 +33,18 @@ echo "Exported $(wc -l < "$NDJSON") parcels."
 
 # ── 3. Build PMTiles ──────────────────────────────────────────────────────────
 echo "Building PMTiles..."
+# Tile-size caps matter: unlimited tiles reach ~3 MB at z10 (all 375k
+# parcels in a handful of tiles) and stall the browser on first paint.
 tippecanoe \
   -o "$OUTPUT" \
   --force \
-  --no-feature-limit \
-  --no-tile-size-limit \
   --minimum-zoom=10 \
   --maximum-zoom=14 \
+  --drop-densest-as-needed \
+  --coalesce-densest-as-needed \
+  --detect-shared-borders \
+  --simplification=10 \
+  --maximum-tile-bytes=300000 \
   --layer=parcels \
   "$NDJSON"
 
