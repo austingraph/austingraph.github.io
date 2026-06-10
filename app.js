@@ -202,17 +202,17 @@ map.on('load', () => {
     'source-layer': 'parcels',
     minzoom: 11,
     paint: {
-      'line-color': '#c2410c',
+      'line-color': '#000000',
       'line-width': [
         'interpolate', ['linear'], ['zoom'],
-        11, 0.4,
-        14, 1.0,
-        17, 2.0,
+        11, 0.5,
+        14, 1.2,
+        17, 2.5,
       ],
       'line-opacity': [
         'interpolate', ['linear'], ['zoom'],
-        11, 0.5,
-        14, 0.85,
+        11, 0.6,
+        14, 0.9,
       ],
     },
   });
