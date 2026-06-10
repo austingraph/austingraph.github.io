@@ -200,12 +200,12 @@ map.on('load', () => {
     type: 'line',
     source: 'parcels',
     'source-layer': 'parcels',
-    minzoom: 10,
+    minzoom: 11,
     paint: {
       'line-color': '#e8a838',
       'line-width': [
         'interpolate', ['linear'], ['zoom'],
-        10, 0.2,
+        11, 0.2,
         14, 0.8,
       ],
       'line-opacity': 0.5,
