@@ -44,6 +44,12 @@ returns jsonb
 language plpgsql
 stable
 as $$
+-- Several embedded queries below iterate edge arrays via `generate_series` /
+-- `generate_subscripts(...) i`, whose output column `i` collides with the
+-- PL/pgSQL loop variable `i`. Without this directive PostgreSQL raises
+-- "column reference \"i\" is ambiguous" at runtime; in every such query the
+-- subscript column is what's intended, so resolve conflicts to the column.
+#variable_conflict use_column
 declare
   c_srid       constant int     := 2277;  -- NAD83 / Texas Central (ftUS)
   c_street_max constant numeric := 120;   -- ft: max edge→street distance to count as street-facing
