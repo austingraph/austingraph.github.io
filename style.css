@@ -107,6 +107,33 @@ body {
   font-style: italic;
 }
 
+/* ── Development envelope ─────────────────────────────────────────────────── */
+.env-legend {
+  display: flex;
+  gap: 14px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: #999;
+}
+
+.env-legend span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+.swatch-setback   { background: #d9534f; opacity: 0.6; }
+.swatch-buildable { background: #4caf7d; opacity: 0.6; }
+.swatch-massing   { background: #e8a838; opacity: 0.8; }
+
+#env-status:empty { display: none; }
+
 #panel footer {
   margin-top: auto;
   padding-top: 16px;

@@ -20,9 +20,13 @@ const map = new maplibregl.Map({
   maxZoom: 19,
 });
 
-map.addControl(new maplibregl.NavigationControl(), 'top-right');
+map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
 
-let selectedParcelId = null;
+// Shared handles for sibling modules (envelope.js)
+window.AG = { map, SUPABASE_URL, SUPABASE_KEY };
+
+let selectedParcelId = null;      // MapLibre feature id (for feature-state)
+let selectedParcelPropId = null;  // TCAD parcel_id (for events)
 
 // ── Geometry helpers (spherical, WGS84) ──────────────────────────────────────
 const EARTH_R = 6378137; // meters
@@ -173,6 +177,11 @@ function clearSelection() {
     );
     selectedParcelId = null;
   }
+  if (selectedParcelPropId !== null) {
+    const parcel_id = selectedParcelPropId;
+    selectedParcelPropId = null;
+    window.dispatchEvent(new CustomEvent('parcel:deselect', { detail: { parcel_id } }));
+  }
 }
 
 // ── Map layers & interaction ─────────────────────────────────────────────────
@@ -291,15 +300,15 @@ map.on('load', () => {
     const featureId = feature.id;
 
     if (selectedParcelId === featureId) {
-      // Clicking the same parcel deselects it
+      // Clicking the same parcel deselects it (clearSelection dispatches parcel:deselect)
       clearSelection();
       closePanel();
-      window.dispatchEvent(new CustomEvent('parcel:deselect', { detail: { parcel_id } }));
       return;
     }
 
     clearSelection();
     selectedParcelId = featureId;
+    selectedParcelPropId = parcel_id;
     map.setFeatureState(
       { source: 'parcels', sourceLayer: 'parcels', id: featureId },
       { selected: true }
