@@ -121,7 +121,9 @@ begin
     return 'complete';
   end if;
 
-  -- Pass 1: centroid containment
+  -- Pass 1: point containment. coalesce guards against parcels loaded
+  -- without a centroid (see scripts/backfill_centroids.sql) — a null
+  -- centroid would silently match nothing.
   update public.parcels p
   set zoning_ztype = z.zoning_ztype,
       zoning_base  = public.zoning_district(z.zoning_ztype),
@@ -130,7 +132,7 @@ begin
   cross join lateral (
     select zoning_ztype
     from public.zoning z
-    where st_contains(z.geom, b.centroid)
+    where st_contains(z.geom, coalesce(b.centroid, st_pointonsurface(b.geom)))
     limit 1
   ) z
   where p.parcel_id = b.parcel_id;
