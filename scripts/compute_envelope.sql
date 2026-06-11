@@ -50,8 +50,8 @@ declare
   c_front_band constant numeric := 10;    -- ft: edges within (min dist + band) are street-facing
   c_front_cap  constant numeric := 60;    -- ft: absolute street-facing distance cap
   c_search_deg constant numeric := 0.0008; -- ~80 m candidate-street search radius in 4326
-  -- Alley / driveway road_class codes (CTM street centerline) — tune as needed
-  c_excluded_road_classes constant int[] := array[9, 10];
+  -- road_class 10 = highway ramps/turnarounds (verified on dataset 8hf2-pdmb)
+  c_excluded_road_classes constant int[] := array[10];
   c_buf       constant text := 'side=both endcap=flat join=mitre mitre_limit=2.0';
   c_mitre     constant text := 'join=mitre mitre_limit=2.0';
 
@@ -164,6 +164,8 @@ begin
       from public.streets s
       where st_dwithin(s.geom, v_g4326, c_search_deg)
         and (s.road_class is null or not (s.road_class = any (c_excluded_road_classes)))
+        and coalesce(s.built_status, 2) <> 0   -- skip unbuilt "paper" streets
+        and (s.full_street_name is null or s.full_street_name not ilike '%alley%')
     )
     select e.i, e.e, st_length(e.e) as len,
            n.d, n.full_street_name,

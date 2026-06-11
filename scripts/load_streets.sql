@@ -1,33 +1,43 @@
 -- scripts/load_streets.sql
 --
 -- Background loader for the City of Austin "Street Centerline" layer
--- (Socrata dataset m5w3-uea6). compute_envelope() uses these to classify
--- parcel edges as front / street-side / interior-side / rear.
+-- (Socrata dataset 8hf2-pdmb, ~68.5k segments, verified live 2026-06).
+-- NOTE: the map-view id m5w3-uea6 looks like the same layer but its resource
+-- endpoint returns empty features — do not use it.
 --
--- All road classes are loaded; alley/driveway exclusion happens at query
--- time inside compute_envelope() so it can be tuned without reloading.
+-- compute_envelope() uses these to classify parcel edges as front /
+-- street-side / interior-side / rear. All segments are loaded; ramp /
+-- unbuilt / alley exclusion happens at query time inside compute_envelope()
+-- so it can be tuned without reloading.
 --
 -- Same scaffolding as scripts/load_parcels_from_tcad.sql.
 --
 -- How to run:
 --   1. First run scripts/zoning_schema.sql (one-time).
 --   2. Paste this entire file in the SQL Editor, click Run.
---   3. Come back in ~30-45 minutes (tens of thousands of segments at
---      2000/min).
+--   3. Come back in ~35 minutes (68.5k segments at 2000/min).
 --
 -- Progress:
 --   select * from public.streets_load_state;
---   select count(*) from public.streets;
+--   select count(*) from public.streets;       -- expect ~68,500
 --
 -- When completed = true:
 --   select cron.unschedule('streets-load');
 --
--- Idempotent: safe to re-run (upserts on segment_id).
+-- Idempotent: safe to re-run (upserts on segment_id), but re-running RESTARTS
+-- paging from offset 0 (the state reset below clears any progress recorded
+-- against the old empty m5w3-uea6 dataset).
 
 set statement_timeout = 0;
 
 create extension if not exists http;
 create extension if not exists pg_cron;
+
+-- Earlier revision of this loader pointed at the empty m5w3-uea6 dataset and
+-- may have marked itself complete with zero rows; make sure the column and a
+-- clean state exist before (re)starting.
+alter table if exists public.streets
+  add column if not exists built_status int;
 
 create table if not exists public.streets_load_state (
   id          int primary key default 1 check (id = 1),
@@ -40,6 +50,13 @@ create table if not exists public.streets_load_state (
 
 insert into public.streets_load_state (id) values (1)
 on conflict (id) do nothing;
+
+update public.streets_load_state
+  set next_offset = 0,
+      completed   = false,
+      last_result = 'reset (dataset changed to 8hf2-pdmb)',
+      updated_at  = now()
+  where id = 1;
 
 create or replace function public.streets_load_step(p_limit int default 2000)
 returns text
@@ -74,7 +91,7 @@ begin
     return 'already complete';
   end if;
 
-  v_url := 'https://data.austintexas.gov/resource/m5w3-uea6.geojson'
+  v_url := 'https://data.austintexas.gov/resource/8hf2-pdmb.geojson'
         || '?$order=segment_id'
         || '&$limit='  || p_limit
         || '&$offset=' || v_offset;
@@ -123,17 +140,19 @@ begin
         continue;
       end if;
 
-      insert into public.streets (segment_id, geom, full_street_name, road_class)
+      insert into public.streets (segment_id, geom, full_street_name, road_class, built_status)
       values (
         v_id,
         v_g::geometry(MultiLineString, 4326),
         v_feature->'properties'->>'full_street_name',
-        nullif(v_feature->'properties'->>'road_class', '')::numeric::int
+        nullif(v_feature->'properties'->>'road_class', '')::numeric::int,
+        nullif(v_feature->'properties'->>'built_status', '')::numeric::int
       )
       on conflict (segment_id) do update
         set geom             = excluded.geom,
             full_street_name = excluded.full_street_name,
-            road_class       = excluded.road_class;
+            road_class       = excluded.road_class,
+            built_status     = excluded.built_status;
 
       v_upserted := v_upserted + 1;
     exception when others then

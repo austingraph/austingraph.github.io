@@ -4,6 +4,10 @@
 -- joining parcels to the City of Austin zoning polygons, so compute_envelope()
 -- never pays a parcel↔zoning join per click.
 --
+-- parcels.zoning_base is the TRUE base district parsed from the full zoning
+-- string via public.zoning_district() ('SF-3-NP' → 'SF-3'); the city's own
+-- zoning_base field is only the coarse family ('SF') and is never used here.
+--
 -- Two passes per batch:
 --   1. Point containment: zoning polygon containing the parcel centroid
 --      (centroid is ST_PointOnSurface, guaranteed interior).
@@ -26,11 +30,26 @@
 -- When completed = true:
 --   select cron.unschedule('zoning-join');
 --
--- Re-running from scratch: delete from public.zoning_join_state; then re-run.
+-- Re-running this script RESTARTS the join from the first parcel (the state
+-- reset below). That is intentional: it recomputes every parcel with the
+-- current parsing logic, overwriting older values.
 
 set statement_timeout = 0;
 
 create extension if not exists pg_cron;
+
+-- District parser (also in zoning_schema.sql; repeated here so this script is
+-- self-contained for databases where the schema predates the function).
+create or replace function public.zoning_district(p_ztype text)
+returns text
+language sql
+immutable
+as $fn$
+  select (regexp_match(
+    upper(regexp_replace(coalesce(p_ztype, ''), '^I-', '')),
+    '^(SF-4A|SF-4B|SF-[1-6]|MF-[1-6]|CS-1|CS|GR|LR|LO|GO|NO|LI|LA|MH|RR|DR|CBD|DMU|PUD|AG|AV|CH|IP|MI|ERC|TOD|TND|UNZ|NBG|W/LO|R&D|CR|P|L)(-|$)'
+  ))[1]
+$fn$;
 
 create table if not exists public.zoning_join_state (
   id             int primary key default 1 check (id = 1),
@@ -43,6 +62,13 @@ create table if not exists public.zoning_join_state (
 
 insert into public.zoning_join_state (id) values (1)
 on conflict (id) do nothing;
+
+update public.zoning_join_state
+  set last_parcel_id = '',
+      completed      = false,
+      last_result    = 'reset (recomputing with zoning_district parser)',
+      updated_at     = now()
+  where id = 1;
 
 create or replace function public.zoning_join_step(p_limit int default 5000)
 returns text
@@ -98,11 +124,11 @@ begin
   -- Pass 1: centroid containment
   update public.parcels p
   set zoning_ztype = z.zoning_ztype,
-      zoning_base  = z.zoning_base,
+      zoning_base  = public.zoning_district(z.zoning_ztype),
       multi_zoned  = false
   from _zj_batch b
   cross join lateral (
-    select zoning_ztype, zoning_base
+    select zoning_ztype
     from public.zoning z
     where st_contains(z.geom, b.centroid)
     limit 1
@@ -116,7 +142,7 @@ begin
   -- batch and note it rather than stalling the loader.
   begin
     with inter as (
-      select b.parcel_id, z.zoning_ztype, z.zoning_base,
+      select b.parcel_id, z.zoning_ztype,
              st_area(st_intersection(b.geom, z.geom)) as a,
              st_area(b.geom) as total
       from _zj_batch b
@@ -129,14 +155,14 @@ begin
       select parcel_id from sig group by parcel_id having count(*) > 1
     ),
     dominant as (
-      select distinct on (s.parcel_id) s.parcel_id, s.zoning_ztype, s.zoning_base
+      select distinct on (s.parcel_id) s.parcel_id, s.zoning_ztype
       from sig s
       join split using (parcel_id)
       order by s.parcel_id, s.a desc
     )
     update public.parcels p
     set zoning_ztype = d.zoning_ztype,
-        zoning_base  = d.zoning_base,
+        zoning_base  = public.zoning_district(d.zoning_ztype),
         multi_zoned  = true
     from dominant d
     where p.parcel_id = d.parcel_id;

@@ -39,15 +39,19 @@ create policy "anon read zoning" on public.zoning
   for select using (true);
 
 -- ── City of Austin street centerlines ────────────────────────────────────────
--- Source: Socrata "Street Centerline" dataset m5w3-uea6.
+-- Source: Socrata "Street Centerline" dataset 8hf2-pdmb (~68.5k segments).
+-- (The map-view id m5w3-uea6 is a stub that returns empty features — use the
+-- dataset id 8hf2-pdmb.)
 -- Used by compute_envelope() to classify parcel edges (front / side / rear).
--- All road classes are loaded; alleys/driveways are excluded at query time so
--- the filter stays tunable without reloading.
+-- All segments are loaded; ramps (road_class 10), unbuilt "paper" streets
+-- (built_status 0), and alleys (by name) are excluded at query time so the
+-- filter stays tunable without reloading.
 create table if not exists public.streets (
   segment_id       bigint primary key,
   geom             geometry(MultiLineString, 4326) not null,
   full_street_name text,
-  road_class       int
+  road_class       int,
+  built_status     int    -- 0 = unbuilt (paper street), 2 = built
 );
 
 create index if not exists streets_geom_idx on public.streets using gist (geom);
@@ -146,6 +150,23 @@ values
    'General commercial services. Compatibility standards deferred.', 'LDC 25-2-492'),
   ('CS-1', 'base', null, null, 10, 10, 0, 0, 60, 95, 95, 2.0, null,
    'Commercial-liquor sales. Compatibility standards deferred.', 'LDC 25-2-492');
+
+-- ── Base-district parser ─────────────────────────────────────────────────────
+-- The city's zoning_base field is the coarse family only ('SF-3-NP' → 'SF',
+-- 'MF-3' → 'MF'), which is too coarse to key zoning_rules. This parses the
+-- true base district from the full zoning string: 'SF-3-NP' → 'SF-3',
+-- 'CS-MU-V-CO-NP' → 'CS', 'I-SF-2' → 'SF-2' (interim zoning uses the base
+-- district's standards). Returns null when no known district matches.
+create or replace function public.zoning_district(p_ztype text)
+returns text
+language sql
+immutable
+as $fn$
+  select (regexp_match(
+    upper(regexp_replace(coalesce(p_ztype, ''), '^I-', '')),
+    '^(SF-4A|SF-4B|SF-[1-6]|MF-[1-6]|CS-1|CS|GR|LR|LO|GO|NO|LI|LA|MH|RR|DR|CBD|DMU|PUD|AG|AV|CH|IP|MI|ERC|TOD|TND|UNZ|NBG|W/LO|R&D|CR|P|L)(-|$)'
+  ))[1]
+$fn$;
 
 -- ── Zoning columns on parcels ────────────────────────────────────────────────
 -- Populated by scripts/apply_zoning_to_parcels.sql (precomputed spatial join,
