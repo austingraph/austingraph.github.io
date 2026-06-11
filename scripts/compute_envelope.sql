@@ -149,10 +149,10 @@ begin
   end if;
 
   if st_numgeometries(v_parcel.geom) > 1 then
-    v_notes := v_notes || 'Multi-part parcel; envelope computed on largest part.';
+    v_notes := v_notes || 'Multi-part parcel; envelope computed on largest part.'::text;
   end if;
   if v_parcel.multi_zoned then
-    v_notes := v_notes || 'Parcel spans multiple zoning districts; dominant district applied.';
+    v_notes := v_notes || 'Parcel spans multiple zoning districts; dominant district applied.'::text;
   end if;
 
   v_g4326 := st_transform(v_g, 4326);
@@ -193,7 +193,9 @@ begin
     v_d     := v_d     || (case when r.d <= c_street_max then r.d end);
     v_sname := v_sname || coalesce(r.full_street_name, '');
     v_az    := v_az    || r.az;
-    v_class := v_class || 'side';
+    -- '::text' casts on array appends: bare literals make `||` resolve to
+    -- array-concatenation ("malformed array literal") instead of append
+    v_class := v_class || 'side'::text;
   end loop;
 
   v_n := coalesce(array_length(v_e, 1), 0);
@@ -202,7 +204,7 @@ begin
   if v_n < 3 or v_min_d is null then
     -- Flag lot / data gap: no mapped street near any edge → uniform interior buffer
     v_classification := 'fallback_uniform';
-    v_notes := v_notes || 'No mapped street within 120 ft; uniform interior setback applied.';
+    v_notes := v_notes || 'No mapped street within 120 ft; uniform interior setback applied.'::text;
     v_setback := coalesce(v_rules.interior_side_setback_ft, 0);
     if v_setback > 0 then
       v_zone := st_difference(v_g, st_buffer(v_g, -v_setback, c_mitre));
@@ -310,7 +312,7 @@ begin
   v_buildable_sqft := coalesce(st_area(v_buildable), 0);
 
   if v_buildable_sqft = 0 then
-    v_notes := v_notes || 'Setbacks consume the entire lot.';
+    v_notes := v_notes || 'Setbacks consume the entire lot.'::text;
   end if;
 
   if v_n > 0 then
