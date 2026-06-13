@@ -227,6 +227,14 @@ body {
 }
 .satellite-btn.active { background: #2d7a1a; color: #fff; }
 
+/* Override MapLibre's 29×29px ctrl-group button rule for text buttons */
+.maplibregl-ctrl-group button.satellite-btn {
+  width: auto;
+  height: auto;
+  display: inline-block;
+  padding: 4px 10px;
+}
+
 .layers-ctrl { position: relative; }
 .layers-panel {
   display: none;
