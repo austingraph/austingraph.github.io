@@ -14,7 +14,7 @@ from common import (
 DATASET = "3syk-w9eu"
 SOURCE = "permits"
 PAGE = 1000
-MAX_PAGES = 50  # ~50k rows per nightly run
+MAX_PAGES = 20  # ~20k rows per nightly run (bounded so votes + embeddings also run)
 
 
 def field(row, *names):
