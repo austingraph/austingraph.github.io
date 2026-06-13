@@ -35,11 +35,11 @@ def configured():
     return True
 
 
-def socrata_page(dataset_id, offset, limit, select=None, where=None, order="$offset"):
+def socrata_page(dataset_id, offset, limit, select=None, where=None, order=":id"):
     """Fetch one page from a Socrata dataset as a list of dicts.
 
     Uses the SODA 2.1 JSON endpoint with $limit/$offset paging. A stable
-    $order is required for correct paging; defaults to the row offset.
+    $order is required for correct paging; defaults to :id (Socrata built-in).
     """
     params = {"$limit": str(limit), "$offset": str(offset), "$order": order}
     if select:
