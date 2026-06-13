@@ -14,8 +14,8 @@ maplibregl.addProtocol('pmtiles', protocol.tile.bind(protocol));
 const map = new maplibregl.Map({
   container: 'map',
   style: 'https://tiles.openfreemap.org/styles/liberty',
-  center: [-97.7404, 30.2747],  // Texas State Capitol
-  zoom: 15,
+  center: [-97.7440, 30.2580],  // South Congress / Bouldin — data-rich parcels
+  zoom: 16,
   minZoom: 9,
   maxZoom: 19,
 });
