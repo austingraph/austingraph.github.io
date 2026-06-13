@@ -107,6 +107,72 @@ body {
   font-style: italic;
 }
 
+/* ── Connections (knowledge graph) ────────────────────────────────────────── */
+.conn-group { display: flex; flex-direction: column; gap: 10px; }
+.conn-group:not(:empty) { margin-top: 10px; }
+
+.conn-heading {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: #9a9aa0;
+  margin: 6px 0 4px;
+}
+
+.conn-item {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.conn-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.conn-title { font-weight: 600; color: #e8e8ea; }
+
+.conn-badge {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #e8a838;
+  border: 1px solid rgba(232, 168, 56, 0.4);
+  border-radius: 10px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+
+.conn-detail { color: #cfcfd4; margin-top: 4px; }
+.conn-meta   { color: #888; font-size: 12px; margin-top: 3px; }
+
+.conn-votes {
+  list-style: none;
+  margin: 8px 0 0;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.conn-votes li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12.5px;
+}
+.conn-voter { color: #bbb; }
+.conn-vote  { font-weight: 600; }
+.conn-vote-yes,
+.conn-vote-yea  { color: #4caf7d; }
+.conn-vote-no,
+.conn-vote-nay  { color: #d9534f; }
+
 /* ── Development envelope ─────────────────────────────────────────────────── */
 .env-legend {
   display: flex;
