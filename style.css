@@ -212,3 +212,70 @@ body {
   font-size: 13.5px;
 }
 #panel footer a:hover { text-decoration: underline; }
+
+/* ── Map Tools ────────────────────────────────────────────────────────────── */
+
+.satellite-btn {
+  background: #fff;
+  border: none;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.satellite-btn.active { background: #2d7a1a; color: #fff; }
+
+.layers-ctrl { position: relative; }
+.layers-panel {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 8px 12px;
+  min-width: 160px;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+.layers-panel.open { display: block; }
+
+.overlay-ctrl-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  padding: 3px 0;
+  cursor: pointer;
+}
+
+.draw-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(18, 18, 22, 0.88);
+  backdrop-filter: blur(6px);
+  z-index: 5;
+}
+
+.draw-tb-btn {
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 4px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #e8e8ea;
+  cursor: pointer;
+}
+.draw-tb-btn:hover { background: rgba(255,255,255,0.18); }
+.draw-tb-btn.active { background: #2d7a1a; color: #fff; border-color: #2d7a1a; }
