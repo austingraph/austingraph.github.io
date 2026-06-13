@@ -14,7 +14,7 @@ import json
 import time
 import urllib.request
 
-from common import db
+from common import db, configured
 
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 MODEL = "text-embedding-3-small"
@@ -45,6 +45,8 @@ def embed_batch(texts):
 
 
 def main():
+    if not configured():
+        return
     if not OPENAI_API_KEY:
         print("OPENAI_API_KEY not set; skipping embeddings step.", flush=True)
         return

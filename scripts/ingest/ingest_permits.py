@@ -7,7 +7,7 @@ the previous run stopped and wraps back to 0 once the dataset is exhausted.
 """
 
 from common import (
-    db, socrata_page, get_cursor, set_cursor,
+    db, configured, socrata_page, get_cursor, set_cursor,
     link_point_to_parcel, upsert_parcel_node, upsert_node, upsert_edge, upsert_document,
 )
 
@@ -36,6 +36,8 @@ def build_body(row, permit_number):
 
 
 def main():
+    if not configured():
+        return
     conn = db()
     start = get_cursor(conn, SOURCE)
     offset = start

@@ -9,7 +9,7 @@ Idempotent: re-running upserts the same nodes/edges/documents.
 """
 
 from common import (
-    db, socrata_page, get_cursor, set_cursor,
+    db, configured, socrata_page, get_cursor, set_cursor,
     link_point_to_parcel, upsert_parcel_node, upsert_node, upsert_edge, upsert_document,
 )
 
@@ -32,6 +32,8 @@ def build_body(row):
 
 
 def main():
+    if not configured():
+        return
     conn = db()
     offset = get_cursor(conn, SOURCE)
     linked = unlinked = 0

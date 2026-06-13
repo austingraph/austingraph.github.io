@@ -25,6 +25,16 @@ def db():
     return psycopg.connect(DATABASE_URL, autocommit=False)
 
 
+def configured():
+    """True if DATABASE_URL is present. When False, scripts skip as a clean
+    no-op (exit 0) so a scheduled run before secrets are set does not fail."""
+    if not DATABASE_URL:
+        print("DATABASE_URL not set; skipping (no-op). Add the repo secret to "
+              "enable ingestion.", flush=True)
+        return False
+    return True
+
+
 def socrata_page(dataset_id, offset, limit, select=None, where=None, order="$offset"):
     """Fetch one page from a Socrata dataset as a list of dicts.
 

@@ -11,7 +11,7 @@ Run AFTER ingest_zoning_cases so the case nodes exist.
 
 import re
 
-from common import db, socrata_page, set_cursor, upsert_node, upsert_edge
+from common import db, configured, socrata_page, set_cursor, upsert_node, upsert_edge
 
 DATASET = "3c89-i35a"
 SOURCE = "votes"
@@ -30,6 +30,8 @@ def find_case_node(conn, case_number):
 
 
 def main():
+    if not configured():
+        return
     conn = db()
     # Always full-scan: a vote skipped earlier (case not yet ingested) becomes
     # linkable once its case exists, so we re-evaluate every item each run.
