@@ -195,6 +195,11 @@
       .map(function (l) { return l.id; });
     if (map.getLayer("3d-buildings")) buildingLayers.push("3d-buildings");
 
+    // Start hidden — checkbox is unchecked on load
+    buildingLayers.forEach(function (id) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none");
+    });
+
     map.addControl({
       onAdd: function () {
         this._container = document.createElement("div");
@@ -203,7 +208,7 @@
         lbl.className = "overlay-ctrl-label";
         var checkbox = document.createElement("input");
         checkbox.type = "checkbox";
-        checkbox.checked = true;
+        checkbox.checked = false;
         checkbox.addEventListener("change", function () {
           var vis = this.checked ? "visible" : "none";
           buildingLayers.forEach(function (id) {
