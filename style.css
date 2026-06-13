@@ -196,8 +196,6 @@ body {
 }
 .swatch-setback   { background: #d9534f; opacity: 0.6; }
 .swatch-buildable { background: #4caf7d; opacity: 0.6; }
-.swatch-massing   { background: #e8a838; opacity: 0.8; }
-
 #env-status:empty { display: none; }
 
 #panel footer {
