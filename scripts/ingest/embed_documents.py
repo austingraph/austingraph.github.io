@@ -19,6 +19,7 @@ from common import db, configured
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 MODEL = "text-embedding-3-small"
 BATCH = 100
+MAX_DOCS = 8000  # per-run cap so the first backlog chips away nightly within the job budget
 
 
 def embed_batch(texts):
@@ -82,6 +83,9 @@ def main():
         conn.commit()
         total += len(rows)
         print(f"  embedded {total} documents", flush=True)
+        if total >= MAX_DOCS:
+            print(f"  reached per-run cap ({MAX_DOCS}); remaining docs resume next run", flush=True)
+            break
 
     print(f"embeddings done: {total} new vectors", flush=True)
     conn.close()
