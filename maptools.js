@@ -5,14 +5,20 @@
   var measurePts = [];
   var contourDemSource;
 
-  // Contour source must be set up before map load
+  // Contour source must be set up before map load. Guarded so any CDN/API
+  // issue degrades to "no Topo" instead of taking down the whole toolbar.
   if (window.mlcontour) {
-    contourDemSource = new mlcontour.DemSource({
-      url: "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png",
-      encoding: "terrarium",
-      maxzoom: 14,
-    });
-    contourDemSource.setupMapLibre(maplibregl);
+    try {
+      contourDemSource = new mlcontour.DemSource({
+        url: "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png",
+        encoding: "terrarium",
+        maxzoom: 14,
+      });
+      contourDemSource.setupMaplibre(maplibregl);
+    } catch (e) {
+      console.warn("maplibre-contour setup failed; Topo disabled:", e);
+      contourDemSource = undefined;
+    }
   }
 
   var OVERLAYS = [
