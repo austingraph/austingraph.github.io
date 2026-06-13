@@ -40,17 +40,7 @@
       source: 'envelope-buildable',
       paint: { 'line-color': '#4caf7d', 'line-width': 1.5 },
     });
-    map.addLayer({
-      id: 'envelope-massing',
-      type: 'fill-extrusion',
-      source: 'envelope-buildable',
-      paint: {
-        'fill-extrusion-color': '#e8a838',
-        'fill-extrusion-height': ['coalesce', ['get', 'height_m'], 0],
-        'fill-extrusion-base': 0,
-        'fill-extrusion-opacity': 0.55,
-      },
-    });
+
   });
 
   function fmtSqft(n) {
@@ -132,8 +122,8 @@
       map.easeTo({
         center: bboxCenter(target.geometry),
         zoom: 17.2,
-        pitch: 55,
-        bearing: -17,
+        pitch: 0,
+        bearing: 0,
         duration: 900,
       });
     }
