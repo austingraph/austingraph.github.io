@@ -6,7 +6,7 @@ name: Ingest civic data
 
 on:
   schedule:
-    - cron: "0 8 * * *"   # 08:00 UTC ≈ 03:00 Austin
+    - cron: "0 8 * * 0"   # 08:00 UTC Sundays ≈ 03:00 Austin (weekly; data is historical)
   workflow_dispatch:
 
 concurrency:
