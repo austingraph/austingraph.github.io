@@ -124,6 +124,9 @@ function openPanel(parcelId, geometry) {
   elTcad.href = `https://travis.prodigycad.com/property-detail/${parcelId}`;
 
   const s = geometryStats(geometry);
+  window.AG.lastPanelData = { parcelId, geometry, stats: s };
+  const reportBtn = document.getElementById('panel-report-btn');
+  if (reportBtn) reportBtn.style.display = '';
   elArea.textContent   = fmtArea(s.areaM2);
   elPerim.textContent  = fmtFeet(s.perimM);
   elExtent.textContent = `${fmtFeet(s.widthM)} × ${fmtFeet(s.heightM)}`;
@@ -162,6 +165,9 @@ function openPanel(parcelId, geometry) {
 function closePanel() {
   panel.classList.remove('open');
   panel.setAttribute('aria-hidden', 'true');
+  const reportBtn = document.getElementById('panel-report-btn');
+  if (reportBtn) reportBtn.style.display = 'none';
+  window.AG.lastPanelData = null;
 }
 
 document.getElementById('panel-close').addEventListener('click', () => {

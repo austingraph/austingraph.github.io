@@ -366,6 +366,188 @@ body {
 }
 .filter-clear:hover { background: rgba(255, 255, 255, 0.18); }
 
+/* ── Parcel Report button (in left detail panel header) ───────────────────── */
+.report-btn {
+  display: inline-block;
+  margin-top: 10px;
+  background: #e8a838;
+  color: #111;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.3px;
+}
+.report-btn:hover { background: #f0b94a; }
+
+/* ── Parcel Report modal ──────────────────────────────────────────────────── */
+#report-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0, 0, 0, 0.75);
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+#report-modal.open { display: flex; }
+
+#report-modal-inner {
+  background: #fff;
+  color: #111;
+  width: 860px;
+  max-width: 96vw;
+  max-height: 96vh;
+  overflow-y: auto;
+  border-radius: 8px;
+  padding: 28px 28px 24px;
+  position: relative;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+#report-close {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  background: none;
+  border: none;
+  font-size: 26px;
+  line-height: 1;
+  color: #555;
+  cursor: pointer;
+}
+#report-close:hover { color: #111; }
+
+#report-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #111;
+  margin-bottom: 14px;
+  padding-right: 32px;
+}
+
+#report-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e0e0e0;
+}
+#report-toolbar .report-tool-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: #888;
+  margin-right: 4px;
+}
+
+#report-snapshot {
+  width: 100%;
+  margin-bottom: 16px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #f0f0f0;
+  min-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #888;
+  font-size: 13px;
+}
+#report-snapshot img {
+  width: 100%;
+  display: block;
+  border-radius: 4px;
+}
+
+#report-data {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.report-section {
+  background: #f7f7f8;
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+.report-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #888;
+  margin-bottom: 8px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #e8e8e8;
+}
+.report-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12.5px;
+  padding: 2px 0;
+}
+.report-row dt { color: #666; flex-shrink: 0; }
+.report-row dd { text-align: right; font-weight: 500; word-break: break-word; }
+
+#report-notes-wrap { margin-bottom: 16px; }
+.report-section-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: #888;
+  margin-bottom: 6px;
+}
+#report-notes {
+  width: 100%;
+  height: 72px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  color: #111;
+}
+#report-notes:focus { outline: none; border-color: #e8a838; }
+
+#report-footer-bar {
+  font-size: 11px;
+  color: #999;
+  border-top: 1px solid #eee;
+  padding-top: 10px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media print {
+  body > *:not(#report-modal) { display: none !important; }
+  #report-modal {
+    position: static;
+    background: none;
+    display: block;
+  }
+  #report-modal-inner {
+    box-shadow: none;
+    max-height: none;
+    border-radius: 0;
+    padding: 12px;
+    width: 100%;
+  }
+  #report-close,
+  #report-toolbar { display: none !important; }
+}
+
 /* draw/measure button styles (kept for future panel integration) */
 .draw-tb-btn {
   background: rgba(255,255,255,0.1);
