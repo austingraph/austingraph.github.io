@@ -15,6 +15,7 @@
     <header>
       <h1 id="panel-parcel-id">—</h1>
       <p class="panel-sub">TCAD Property ID</p>
+      <button id="panel-report-btn" class="report-btn" style="display:none">Parcel Report</button>
     </header>
 
     <section>
@@ -72,11 +73,27 @@
   <script src="app.js?v=20260614"></script>
   <script src="envelope.js?v=20260614"></script>
   <script src="connections.js?v=20260613"></script>
+  <script src="report.js?v=20260614"></script>
   <script src="https://unpkg.com/maplibre-contour@0.0.5/dist/index.min.js"></script>
   <script src="https://unpkg.com/terra-draw/dist/terra-draw.umd.js"></script>
   <script src="https://unpkg.com/terra-draw-maplibre-gl-adapter/dist/terra-draw-maplibre-gl-adapter.umd.js"></script>
   <script src="maptools.js?v=20260614b"></script>
   <!-- filters.js after maptools.js: it injects into the shared #map-tools-content panel -->
   <script src="filters.js?v=20260614b"></script>
+
+  <div id="report-modal" aria-hidden="true">
+    <div id="report-modal-inner">
+      <button id="report-close" aria-label="Close report">&times;</button>
+      <h2 id="report-title">Parcel Report</h2>
+      <div id="report-toolbar"></div>
+      <div id="report-snapshot"></div>
+      <div id="report-data"></div>
+      <div id="report-notes-wrap">
+        <label for="report-notes" class="report-section-label">Notes</label>
+        <textarea id="report-notes" placeholder="Add notes for this parcel…"></textarea>
+      </div>
+      <div id="report-footer-bar"></div>
+    </div>
+  </div>
 </body>
 </html>
