@@ -1,103 +1,205 @@
 // austingraph.chat — Parcel Report
-// Opens a modal with a map snapshot, parcel data summary, draw/measure annotation
-// tools, a notes field, and a print button. Triggered from the left detail panel.
+// Opens a modal with a map snapshot the user can draw and measure on (mouse or
+// touch), a parcel data summary, a notes field, and a print button. Annotations
+// are drawn onto an HTML5 canvas overlaid on the snapshot, so they appear in the
+// printed/PDF document. Triggered from the left detail panel.
 
 (() => {
   const { map } = window.AG;
 
-  const modal      = document.getElementById('report-modal');
-  const inner      = document.getElementById('report-modal-inner');
-  const closeBtn   = document.getElementById('report-close');
-  const toolbar    = document.getElementById('report-toolbar');
-  const snapshot   = document.getElementById('report-snapshot');
-  const dataEl     = document.getElementById('report-data');
-  const notesEl    = document.getElementById('report-notes');
-  const footerEl   = document.getElementById('report-footer-bar');
-  const titleEl    = document.getElementById('report-title');
-  const reportBtn  = document.getElementById('panel-report-btn');
+  const modal     = document.getElementById('report-modal');
+  const closeBtn  = document.getElementById('report-close');
+  const toolbar   = document.getElementById('report-toolbar');
+  const snapshot  = document.getElementById('report-snapshot');
+  const dataEl    = document.getElementById('report-data');
+  const notesEl   = document.getElementById('report-notes');
+  const footerEl  = document.getElementById('report-footer-bar');
+  const titleEl   = document.getElementById('report-title');
+  const reportBtn = document.getElementById('panel-report-btn');
 
-  let drawInstance = null;
-  let measureActive = false;
-  let measurePoints = [];
-  let measureLayersAdded = false;
-
+  const FT_PER_M = 3.280839895;
   const M2_PER_ACRE = 4046.8564224;
-  const FT_PER_M    = 3.280839895;
-  const EARTH_R     = 6378137;
 
-  // ── Helpers ─────────────────────────────────────────────────────────────────
+  // Drawing state
+  let imgEl = null;          // <img> map snapshot
+  let canvas = null;         // overlay <canvas>
+  let ctx = null;
+  let strokes = [];          // committed strokes
+  let current = null;        // in-progress stroke
+  let drawing = false;
+  let mode = 'pen';          // 'pen' | 'measure'
+  let snapMeta = null;       // { metersPerMapCssPx, mapCssWidth }
+
+  // ── Formatting ───────────────────────────────────────────────────────────────
   function fmtArea(m2) {
     const acres = m2 / M2_PER_ACRE;
     const sqft  = m2 * FT_PER_M * FT_PER_M;
     if (acres >= 0.5) return `${acres.toFixed(2)} ac (${Math.round(sqft).toLocaleString()} sq ft)`;
     return `${Math.round(sqft).toLocaleString()} sq ft (${acres.toFixed(3)} ac)`;
   }
-
   function fmtFeet(m) {
-    return `${Math.round(m * FT_PER_M).toLocaleString()} ft`;
+    const ft = m * FT_PER_M;
+    if (ft >= 1000) return `${ft.toLocaleString(undefined, { maximumFractionDigits: 0 })} ft (${(ft / 5280).toFixed(2)} mi)`;
+    return `${ft.toLocaleString(undefined, { maximumFractionDigits: 0 })} ft`;
   }
 
-  function haversine([lon1, lat1], [lon2, lat2]) {
-    const toRad = (d) => d * Math.PI / 180;
-    const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
-    const a = Math.sin(dLat / 2) ** 2 +
-              Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-    return 2 * EARTH_R * Math.asin(Math.sqrt(a));
+  // ── Geometry helpers ─────────────────────────────────────────────────────────
+  function eachCoord(geometry, fn) {
+    (function walk(c) {
+      if (typeof c[0] === 'number') { fn(c); return; }
+      c.forEach(walk);
+    })(geometry.coordinates);
   }
-
   function bboxFromGeometry(geometry) {
-    const coords = [];
-    function collect(c) {
-      if (typeof c[0] === 'number') { coords.push(c); return; }
-      c.forEach(collect);
-    }
-    collect(geometry.coordinates);
     let minLon = Infinity, maxLon = -Infinity, minLat = Infinity, maxLat = -Infinity;
-    for (const [lon, lat] of coords) {
+    eachCoord(geometry, ([lon, lat]) => {
       if (lon < minLon) minLon = lon;
       if (lon > maxLon) maxLon = lon;
       if (lat < minLat) minLat = lat;
       if (lat > maxLat) maxLat = lat;
-    }
+    });
     return [[minLon, minLat], [maxLon, maxLat]];
   }
-
   function centroid(geometry) {
-    const coords = [];
-    function collect(c) {
-      if (typeof c[0] === 'number') { coords.push(c); return; }
-      c.forEach(collect);
-    }
-    collect(geometry.coordinates);
-    const lon = coords.reduce((s, c) => s + c[0], 0) / coords.length;
-    const lat = coords.reduce((s, c) => s + c[1], 0) / coords.length;
-    return [lon, lat];
+    let sx = 0, sy = 0, n = 0;
+    eachCoord(geometry, ([lon, lat]) => { sx += lon; sy += lat; n++; });
+    return [sx / n, sy / n];
   }
 
-  // ── Map snapshot ─────────────────────────────────────────────────────────────
+  // ── Map snapshot + drawing canvas ─────────────────────────────────────────────
   function takeSnapshot() {
-    snapshot.textContent = 'Loading map snapshot…';
     const data = window.AG.lastPanelData;
-    if (!data) { snapshot.textContent = 'No parcel selected.'; return; }
+    if (!data) { snapshot.innerHTML = '<div class="report-snap-loading">No parcel selected.</div>'; return; }
+    snapshot.innerHTML = '<div class="report-snap-loading">Rendering map…</div>';
 
-    const bbox = bboxFromGeometry(data.geometry);
-    map.fitBounds(bbox, { padding: 80, animate: false });
+    map.fitBounds(bboxFromGeometry(data.geometry), { padding: 60, maxZoom: 19, animate: false });
 
-    map.once('idle', () => {
-      try {
-        const dataUrl = map.getCanvas().toDataURL('image/png');
-        const img = document.createElement('img');
-        img.src = dataUrl;
-        img.alt = `Map snapshot for parcel ${data.parcelId}`;
-        snapshot.innerHTML = '';
-        snapshot.appendChild(img);
-      } catch (e) {
-        snapshot.textContent = 'Map snapshot unavailable (cross-origin canvas).';
-      }
-    });
+    let done = false;
+    const render = () => {
+      if (done) return;
+      done = true;
+      const c = map.getCanvas();
+      const lat = map.getCenter().lat;
+      const zoom = map.getZoom();
+      // meters per CSS pixel in the map viewport (512-tile web-mercator convention)
+      snapMeta = {
+        metersPerMapCssPx: 40075016.686 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom + 9),
+        mapCssWidth: c.clientWidth,
+      };
+      let url;
+      try { url = c.toDataURL('image/png'); }
+      catch (e) { snapshot.innerHTML = '<div class="report-snap-loading">Snapshot unavailable (browser blocked canvas export).</div>'; return; }
+
+      snapshot.innerHTML = '';
+      imgEl = document.createElement('img');
+      imgEl.alt = `Map snapshot for parcel ${data.parcelId}`;
+      canvas = document.createElement('canvas');
+      canvas.id = 'report-draw-canvas';
+      snapshot.appendChild(imgEl);
+      snapshot.appendChild(canvas);
+
+      imgEl.onload = () => {
+        // Canvas internal resolution = snapshot's natural (device) resolution, so
+        // it stays pixel-aligned with the image at any CSS display size.
+        canvas.width = imgEl.naturalWidth;
+        canvas.height = imgEl.naturalHeight;
+        ctx = canvas.getContext('2d');
+        attachDrawHandlers();
+        redraw();
+      };
+      imgEl.src = url;
+    };
+
+    map.once('idle', render);
+    setTimeout(render, 1200); // fallback if the view didn't change (idle won't fire)
   }
+
+  // Pointer (CSS) → canvas-internal coordinates
+  function toCanvasXY(e) {
+    const r = canvas.getBoundingClientRect();
+    return {
+      x: (e.clientX - r.left) * (canvas.width / r.width),
+      y: (e.clientY - r.top) * (canvas.height / r.height),
+    };
+  }
+  function metersPerCanvasPx() {
+    if (!snapMeta || !canvas) return 0;
+    return snapMeta.metersPerMapCssPx * snapMeta.mapCssWidth / canvas.width;
+  }
+
+  function drawStroke(s) {
+    if (!s.points.length) return;
+    const lw = Math.max(2, Math.round(canvas.width / 320));
+    ctx.lineJoin = ctx.lineCap = 'round';
+    ctx.lineWidth = lw;
+    ctx.strokeStyle = s.type === 'measure' ? '#0a66ff' : '#e01010';
+    ctx.beginPath();
+    ctx.moveTo(s.points[0].x, s.points[0].y);
+    for (let i = 1; i < s.points.length; i++) ctx.lineTo(s.points[i].x, s.points[i].y);
+    ctx.stroke();
+
+    if (s.type === 'measure' && s.points.length >= 2) {
+      const a = s.points[0], b = s.points[s.points.length - 1];
+      const dist = Math.hypot(b.x - a.x, b.y - a.y) * metersPerCanvasPx();
+      const label = fmtFeet(dist);
+      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      const fpx = Math.max(15, Math.round(canvas.width / 48));
+      ctx.font = `bold ${fpx}px -apple-system, Arial, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const tw = ctx.measureText(label).width;
+      ctx.fillStyle = 'rgba(255,255,255,0.88)';
+      ctx.fillRect(mx - tw / 2 - 6, my - fpx * 0.75, tw + 12, fpx * 1.5);
+      ctx.fillStyle = '#0a3aa0';
+      ctx.fillText(label, mx, my);
+    }
+  }
+
+  function redraw() {
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (const s of strokes) drawStroke(s);
+    if (current) drawStroke(current);
+  }
+
+  let handlersAttached = false;
+  function attachDrawHandlers() {
+    if (handlersAttached) return; // canvas element is recreated per snapshot; guard re-binding within one
+    handlersAttached = true;
+  }
+
+  function onPointerDown(e) {
+    if (!canvas) return;
+    e.preventDefault();
+    try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+    drawing = true;
+    current = { type: mode, points: [toCanvasXY(e)] };
+    redraw();
+  }
+  function onPointerMove(e) {
+    if (!drawing) return;
+    e.preventDefault();
+    const p = toCanvasXY(e);
+    if (mode === 'pen') current.points.push(p);
+    else current.points = [current.points[0], p]; // measure: straight segment
+    redraw();
+  }
+  function onPointerUp(e) {
+    if (!drawing) return;
+    drawing = false;
+    if (current && current.points.length) strokes.push(current);
+    current = null;
+    redraw();
+  }
+
+  // Delegated pointer events on the snapshot wrap (canvas is recreated each open)
+  snapshot.addEventListener('pointerdown', (e) => { if (e.target === canvas) onPointerDown(e); });
+  snapshot.addEventListener('pointermove', onPointerMove);
+  window.addEventListener('pointerup', onPointerUp);
+  snapshot.addEventListener('pointercancel', onPointerUp);
 
   // ── Data section ─────────────────────────────────────────────────────────────
+  function el(id) { const n = document.getElementById(id); return (n && n.textContent.trim()) || '—'; }
   function makeSection(title, rows) {
     const sec = document.createElement('div');
     sec.className = 'report-section';
@@ -109,176 +211,92 @@
     for (const [label, value] of rows) {
       const div = document.createElement('div');
       div.className = 'report-row';
-      const dt = document.createElement('dt');
-      dt.textContent = label;
-      const dd = document.createElement('dd');
-      dd.textContent = value || '—';
-      div.appendChild(dt);
-      div.appendChild(dd);
-      dl.appendChild(div);
+      const dt = document.createElement('dt'); dt.textContent = label;
+      const dd = document.createElement('dd'); dd.textContent = value || '—';
+      div.appendChild(dt); div.appendChild(dd); dl.appendChild(div);
     }
     sec.appendChild(dl);
     return sec;
   }
 
-  function el(id) { return document.getElementById(id)?.textContent?.trim() || '—'; }
-
   function populateData(data) {
     dataEl.innerHTML = '';
-
-    // Parcel identity — read from already-rendered panel DOM
-    dataEl.appendChild(makeSection('Parcel identity', [
-      ['TCAD ID',  el('panel-parcel-id')],
-      ['Address',  el('meta-address')],
-      ['Legal',    el('meta-legal')],
-      ['TCAD Acres', el('meta-acres')],
-      ['Geo ID',   el('meta-geoid')],
-    ]));
-
-    // Dimensions — from stats computed at click time
     const s = data.stats;
+    dataEl.appendChild(makeSection('Parcel identity', [
+      ['TCAD ID', el('panel-parcel-id')],
+      ['Address', el('meta-address')],
+      ['Legal', el('meta-legal')],
+      ['TCAD Acres', el('meta-acres')],
+      ['Geo ID', el('meta-geoid')],
+    ]));
     dataEl.appendChild(makeSection('Dimensions', [
-      ['Area',      fmtArea(s.areaM2)],
+      ['Area', fmtArea(s.areaM2)],
       ['Perimeter', fmtFeet(s.perimM)],
-      ['Width',     fmtFeet(s.widthM)],
-      ['Height',    fmtFeet(s.heightM)],
+      ['Width', fmtFeet(s.widthM)],
+      ['Height', fmtFeet(s.heightM)],
     ]));
-
-    // Development envelope — read rendered panel DOM
     dataEl.appendChild(makeSection('Development potential', [
-      ['Zoning',         el('env-zoning')],
-      ['Setbacks',       el('env-setbacks')],
-      ['Buildable ft²',  el('env-buildable')],
-      ['Max FAR',        el('env-far')],
+      ['Zoning', el('env-zoning')],
+      ['Setbacks', el('env-setbacks')],
+      ['Buildable ft²', el('env-buildable')],
+      ['Max FAR', el('env-far')],
       ['Impervious cap', el('env-impervious')],
-      ['Max height',     el('env-height')],
-      ['Max units',      el('env-units')],
+      ['Max height', el('env-height')],
+      ['Max units', el('env-units')],
     ]));
-
-    // Civic connections — summarise first case + permit count from panel DOM
-    const casesEl  = document.getElementById('conn-cases');
+    const casesEl = document.getElementById('conn-cases');
     const permitsEl = document.getElementById('conn-permits');
     const firstCase = casesEl?.querySelector('.conn-title')?.textContent || '—';
     const caseStatus = casesEl?.querySelector('.conn-badge')?.textContent || '';
     const permitCount = permitsEl?.querySelectorAll('.conn-item').length ?? 0;
     dataEl.appendChild(makeSection('Civic connections', [
-      ['Latest case',   firstCase + (caseStatus ? ` (${caseStatus})` : '')],
-      ['Permit count',  permitCount > 0 ? String(permitCount) : '—'],
+      ['Latest case', firstCase + (caseStatus ? ` (${caseStatus})` : '')],
+      ['Permit count', permitCount > 0 ? String(permitCount) : '—'],
     ]));
-  }
-
-  // ── Measure tool ─────────────────────────────────────────────────────────────
-  function initMeasureLayers() {
-    if (measureLayersAdded) return;
-    if (!map.getSource('measure-pts')) {
-      map.addSource('measure-pts', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-      map.addSource('measure-line', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-    }
-    if (!map.getLayer('measure-line-layer')) {
-      map.addLayer({ id: 'measure-line-layer', type: 'line', source: 'measure-line',
-        paint: { 'line-color': '#e8a838', 'line-width': 2, 'line-dasharray': [2, 2] } });
-      map.addLayer({ id: 'measure-pts-layer', type: 'circle', source: 'measure-pts',
-        paint: { 'circle-color': '#e8a838', 'circle-radius': 5, 'circle-stroke-color': '#fff', 'circle-stroke-width': 1.5 } });
-    }
-    measureLayersAdded = true;
-  }
-
-  function updateMeasureDisplay() {
-    const ptFeats = measurePoints.map((pt) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: pt } }));
-    map.getSource('measure-pts')?.setData({ type: 'FeatureCollection', features: ptFeats });
-    if (measurePoints.length >= 2) {
-      map.getSource('measure-line')?.setData({
-        type: 'FeatureCollection',
-        features: [{ type: 'Feature', geometry: { type: 'LineString', coordinates: measurePoints } }],
-      });
-      let dist = 0;
-      for (let i = 0; i < measurePoints.length - 1; i++) dist += haversine(measurePoints[i], measurePoints[i + 1]);
-      const distEl = document.getElementById('report-measure-dist');
-      if (distEl) distEl.textContent = `${fmtFeet(dist)} (${(dist * FT_PER_M / 5280).toFixed(3)} mi)`;
-    }
-  }
-
-  function clearMeasure() {
-    measurePoints = [];
-    if (measureLayersAdded) {
-      map.getSource('measure-pts')?.setData({ type: 'FeatureCollection', features: [] });
-      map.getSource('measure-line')?.setData({ type: 'FeatureCollection', features: [] });
-    }
-    const distEl = document.getElementById('report-measure-dist');
-    if (distEl) distEl.textContent = '—';
-  }
-
-  function onMapClickMeasure(e) {
-    if (!measureActive) return;
-    measurePoints.push([e.lngLat.lng, e.lngLat.lat]);
-    updateMeasureDisplay();
-  }
-
-  function enableMeasure(btn) {
-    initMeasureLayers();
-    measureActive = true;
-    btn.classList.add('active');
-    map.getCanvas().style.cursor = 'crosshair';
-    map.on('click', onMapClickMeasure);
-  }
-
-  function disableMeasure(btn) {
-    measureActive = false;
-    btn.classList.remove('active');
-    map.getCanvas().style.cursor = '';
-    map.off('click', onMapClickMeasure);
   }
 
   // ── Toolbar ──────────────────────────────────────────────────────────────────
   function buildToolbar() {
     toolbar.innerHTML = '';
+    mode = 'pen';
 
     const lbl = document.createElement('span');
     lbl.className = 'report-tool-label';
-    lbl.textContent = 'Measure:';
+    lbl.textContent = 'Draw:';
     toolbar.appendChild(lbl);
 
+    const penBtn = document.createElement('button');
+    penBtn.textContent = '✏️ Pen';
+    penBtn.className = 'active';
     const measureBtn = document.createElement('button');
-    measureBtn.className = 'draw-tb-btn';
-    measureBtn.textContent = 'Click to measure';
-    measureBtn.title = 'Click points on the map to measure distance';
-    let measuring = false;
-    measureBtn.addEventListener('click', () => {
-      measuring = !measuring;
-      if (measuring) enableMeasure(measureBtn);
-      else disableMeasure(measureBtn);
-    });
+    measureBtn.textContent = '📏 Measure';
+
+    function setMode(m) {
+      mode = m;
+      penBtn.classList.toggle('active', m === 'pen');
+      measureBtn.classList.toggle('active', m === 'measure');
+    }
+    penBtn.addEventListener('click', () => setMode('pen'));
+    measureBtn.addEventListener('click', () => setMode('measure'));
+    toolbar.appendChild(penBtn);
     toolbar.appendChild(measureBtn);
 
+    const undoBtn = document.createElement('button');
+    undoBtn.textContent = 'Undo';
+    undoBtn.addEventListener('click', () => { strokes.pop(); redraw(); });
+    toolbar.appendChild(undoBtn);
+
     const clearBtn = document.createElement('button');
-    clearBtn.className = 'draw-tb-btn';
     clearBtn.textContent = 'Clear';
-    clearBtn.addEventListener('click', () => {
-      disableMeasure(measureBtn);
-      measuring = false;
-      clearMeasure();
-    });
+    clearBtn.addEventListener('click', () => { strokes = []; current = null; redraw(); });
     toolbar.appendChild(clearBtn);
 
-    const distWrap = document.createElement('span');
-    distWrap.style.cssText = 'font-size:12px;color:#555;margin-left:4px;';
-    distWrap.innerHTML = 'Distance: <strong id="report-measure-dist">—</strong>';
-    toolbar.appendChild(distWrap);
-
-    // Spacer
     const spacer = document.createElement('span');
     spacer.style.flex = '1';
     toolbar.appendChild(spacer);
 
-    const snapshotBtn = document.createElement('button');
-    snapshotBtn.className = 'draw-tb-btn';
-    snapshotBtn.textContent = 'Refresh snapshot';
-    snapshotBtn.addEventListener('click', takeSnapshot);
-    toolbar.appendChild(snapshotBtn);
-
     const printBtn = document.createElement('button');
-    printBtn.className = 'draw-tb-btn';
-    printBtn.style.cssText = 'background:#e8a838;color:#111;border-color:#e8a838;';
+    printBtn.className = 'primary';
     printBtn.textContent = 'Print / Save PDF';
     printBtn.addEventListener('click', () => window.print());
     toolbar.appendChild(printBtn);
@@ -292,16 +310,17 @@
     footerEl.innerHTML =
       `<span>Generated ${date}</span>` +
       `<span>Centroid: ${lat.toFixed(5)}°N, ${Math.abs(lon).toFixed(5)}°W</span>` +
-      `<span><a href="${tcadUrl}" target="_blank" rel="noopener" style="color:#e8a838">TCAD record →</a></span>`;
+      `<span><a href="${tcadUrl}" target="_blank" rel="noopener" style="color:#b8860b">TCAD record →</a></span>`;
   }
 
   // ── Open / close ─────────────────────────────────────────────────────────────
   function openReport() {
     const data = window.AG.lastPanelData;
     if (!data) return;
-
     titleEl.textContent = `Parcel Report — ${data.parcelId}`;
     notesEl.value = '';
+    strokes = [];
+    current = null;
 
     buildToolbar();
     populateData(data);
@@ -309,19 +328,15 @@
 
     modal.classList.add('open');
     modal.setAttribute('aria-hidden', 'false');
-
     takeSnapshot();
   }
 
   function closeReport() {
     modal.classList.remove('open');
     modal.setAttribute('aria-hidden', 'true');
-    disableMeasure(toolbar.querySelector('.draw-tb-btn'));
-    clearMeasure();
-    map.getCanvas().style.cursor = '';
+    drawing = false;
   }
 
-  // ── Event wiring ──────────────────────────────────────────────────────────────
   reportBtn.addEventListener('click', openReport);
   closeBtn.addEventListener('click', closeReport);
   modal.addEventListener('click', (e) => { if (e.target === modal) closeReport(); });
