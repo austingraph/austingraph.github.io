@@ -1,0 +1,39 @@
+name: Build parcel tiles
+
+# Regenerates the parcels PMTiles from Supabase and re-uploads to Storage.
+# Run on demand from the Actions tab whenever the baked-in tile properties
+# (parcel_id, zoning_base, multi_zoned, acres) or parcel geometry change.
+#
+# Requires repo secrets:
+#   DATABASE_URL          — postgres connection string (already configured)
+#   SUPABASE_SERVICE_KEY  — service_role key, for Storage upload (must be added)
+#
+# Note: Supabase Storage caches the object. After a successful run, bump the
+# ?v= query string on PMTILES_URL in app.js so browsers fetch the fresh tiles.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: build-tiles
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Install postgresql-client (psql)
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Build and upload PMTiles
+        run: bash scripts/build_pmtiles.sh
