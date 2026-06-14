@@ -20,10 +20,12 @@ NDJSON="/tmp/parcels.ndjson"
 : "${SUPABASE_SERVICE_KEY:?SUPABASE_SERVICE_KEY must be set}"
 
 # ── 1. Install tippecanoe if not present ──────────────────────────────────────
+# felt/tippecanoe is a C++ project (built with make), not a Go package.
 if ! command -v tippecanoe &>/dev/null; then
-  echo "Installing tippecanoe via go install..."
-  go install github.com/felt/tippecanoe@latest
-  export PATH="$PATH:$(go env GOPATH)/bin"
+  echo "Building tippecanoe from source..."
+  git clone --depth 1 https://github.com/felt/tippecanoe.git /tmp/tippecanoe
+  make -C /tmp/tippecanoe -j"$(nproc)"
+  sudo make -C /tmp/tippecanoe install
 fi
 
 # ── 2. Export parcels as newline-delimited GeoJSON ────────────────────────────

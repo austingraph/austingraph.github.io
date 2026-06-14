@@ -28,12 +28,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.22"
-
-      - name: Install postgresql-client (psql)
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Install build deps, psql, and tippecanoe
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client build-essential libsqlite3-dev zlib1g-dev git
+          git clone --depth 1 https://github.com/felt/tippecanoe.git /tmp/tippecanoe
+          make -C /tmp/tippecanoe -j"$(nproc)"
+          sudo make -C /tmp/tippecanoe install
+          tippecanoe --version
 
       - name: Build and upload PMTiles
         run: bash scripts/build_pmtiles.sh
