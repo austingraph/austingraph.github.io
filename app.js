@@ -5,7 +5,7 @@
 
 const SUPABASE_URL = 'https://aqbyxpiwugcvoephsvpm.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_QMWSj0CLYe3k3XSGCsWOhw_5RsI-nmN';
-const PMTILES_URL  = `${SUPABASE_URL}/storage/v1/object/public/tiles/parcels.pmtiles`;
+const PMTILES_URL  = `${SUPABASE_URL}/storage/v1/object/public/tiles/parcels.pmtiles?v=20260614`;
 
 // Register the PMTiles protocol with MapLibre
 const protocol = new pmtiles.Protocol();
