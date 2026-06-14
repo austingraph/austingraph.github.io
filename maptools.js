@@ -4,6 +4,7 @@
   var measuring = false;
   var measurePts = [];
   var contourDemSource;
+  var buildingLayers = [];
 
   // Contour source must be set up before map load. Guarded so any CDN/API
   // issue degrades to "no Topo" instead of taking down the whole toolbar.
@@ -36,32 +37,12 @@
       tileSize: 256,
       attribution: "Tiles &copy; Esri"
     });
-
     map.addLayer({
       id: "satellite-layer",
       type: "raster",
       source: "satellite",
       layout: { visibility: "none" }
     }, map.getStyle().layers[1].id);
-
-    map.addControl({
-      onAdd: function () {
-        this._container = document.createElement("div");
-        this._container.className = "maplibregl-ctrl maplibregl-ctrl-group";
-        this._btn = document.createElement("button");
-        this._btn.className = "satellite-btn";
-        this._btn.textContent = "Satellite";
-        var self = this;
-        this._btn.onclick = function () {
-          var on = map.getLayoutProperty("satellite-layer", "visibility") === "visible";
-          map.setLayoutProperty("satellite-layer", "visibility", on ? "none" : "visible");
-          self._btn.classList.toggle("active", !on);
-        };
-        this._container.appendChild(this._btn);
-        return this._container;
-      },
-      onRemove: function () { this._container.parentNode.removeChild(this._container); }
-    }, "top-left");
   }
 
   // ── Terrain + hillshade (always on) ─────────────────────────────────────────
@@ -74,7 +55,6 @@
       encoding: "terrarium",
       maxzoom: 14
     });
-
     map.addLayer({
       id: "hillshade-layer",
       type: "hillshade",
@@ -88,11 +68,9 @@
         "hillshade-exaggeration": 0.3
       }
     });
-
     function enableTerrain() {
       map.setTerrain({ source: "terrain-dem", exaggeration: 1 });
     }
-
     if (map.isSourceLoaded("terrain-dem")) {
       enableTerrain();
     } else {
@@ -105,11 +83,10 @@
     }
   }
 
-  // ── Topo overlay (contour lines) ─────────────────────────────────────────────
+  // ── Topo overlay (contour lines — layers only, no control) ──────────────────
 
   function initTopoOverlay() {
     if (!contourDemSource) return;
-
     map.addSource("contour-source", {
       type: "vector",
       tiles: [contourDemSource.contourProtocolUrl({
@@ -128,7 +105,6 @@
       })],
       maxzoom: 15
     });
-
     map.addLayer({
       id: "contour-lines",
       type: "line",
@@ -141,7 +117,6 @@
         "line-width": ["match", ["get", "level"], 1, 2, 0.8]
       }
     });
-
     map.addLayer({
       id: "contour-labels",
       type: "symbol",
@@ -161,187 +136,158 @@
         "text-halo-width": 1.5
       }
     });
-
-    map.addControl({
-      onAdd: function () {
-        this._container = document.createElement("div");
-        this._container.className = "maplibregl-ctrl maplibregl-ctrl-group";
-        var lbl = document.createElement("label");
-        lbl.className = "overlay-ctrl-label";
-        var checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.addEventListener("change", function () {
-          var vis = this.checked ? "visible" : "none";
-          if (map.getLayer("contour-lines")) map.setLayoutProperty("contour-lines", "visibility", vis);
-          if (map.getLayer("contour-labels")) map.setLayoutProperty("contour-labels", "visibility", vis);
-          map.setTerrain({ source: "terrain-dem", exaggeration: this.checked ? 2 : 1 });
-        });
-        var span = document.createElement("span");
-        span.textContent = "Topo";
-        lbl.appendChild(checkbox);
-        lbl.appendChild(span);
-        this._container.appendChild(lbl);
-        return this._container;
-      },
-      onRemove: function () { this._container.parentNode.removeChild(this._container); }
-    }, "bottom-left");
   }
 
-  // ── Buildings toggle ──────────────────────────────────────────────────────────
+  // ── Buildings (layers only, no control) ──────────────────────────────────────
 
-  function initBuildingsToggle() {
-    var buildingLayers = map.getStyle().layers
+  function initBuildingsLayers() {
+    buildingLayers = map.getStyle().layers
       .filter(function (l) { return l.id.includes("building"); })
       .map(function (l) { return l.id; });
     if (map.getLayer("3d-buildings")) buildingLayers.push("3d-buildings");
-
-    // Start hidden — checkbox is unchecked on load
     buildingLayers.forEach(function (id) {
       if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none");
     });
-
-    map.addControl({
-      onAdd: function () {
-        this._container = document.createElement("div");
-        this._container.className = "maplibregl-ctrl maplibregl-ctrl-group";
-        var lbl = document.createElement("label");
-        lbl.className = "overlay-ctrl-label";
-        var checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.checked = false;
-        checkbox.addEventListener("change", function () {
-          var vis = this.checked ? "visible" : "none";
-          buildingLayers.forEach(function (id) {
-            if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", vis);
-          });
-        });
-        var span = document.createElement("span");
-        span.textContent = "Buildings";
-        lbl.appendChild(checkbox);
-        lbl.appendChild(span);
-        this._container.appendChild(lbl);
-        return this._container;
-      },
-      onRemove: function () { this._container.parentNode.removeChild(this._container); }
-    }, "bottom-left");
   }
 
-  // ── Layers panel (flyout) ────────────────────────────────────────────────────
+  // ── Right-side map tools panel ───────────────────────────────────────────────
 
-  function initLayersPanel() {
-    var layersPanelEl;
-    map.addControl({
-      onAdd: function () {
-        this._container = document.createElement("div");
-        this._container.className = "maplibregl-ctrl maplibregl-ctrl-group layers-ctrl";
+  function initMapPanel() {
+    var panel = document.createElement("div");
+    panel.id = "map-tools-panel";
 
-        var btn = document.createElement("button");
-        btn.className = "satellite-btn layers-btn";
-        btn.textContent = "Layers";
-        btn.setAttribute("aria-label", "Toggle overlay layers");
+    var tab = document.createElement("button");
+    tab.id = "map-tools-tab";
+    tab.setAttribute("aria-label", "Toggle map tools");
+    tab.innerHTML = "&#8249;"; // ‹
 
-        layersPanelEl = document.createElement("div");
-        layersPanelEl.className = "layers-panel";
+    var content = document.createElement("div");
+    content.id = "map-tools-content";
 
-        btn.addEventListener("click", function (e) {
-          e.stopPropagation();
-          layersPanelEl.classList.toggle("open");
-        });
+    panel.appendChild(tab);
+    panel.appendChild(content);
+    document.body.appendChild(panel);
 
-        this._container.appendChild(btn);
-        this._container.appendChild(layersPanelEl);
-        return this._container;
-      },
-      onRemove: function () { this._container.parentNode.removeChild(this._container); }
-    }, "top-left");
-
-    document.addEventListener("click", function (e) {
-      if (layersPanelEl && !e.target.closest(".layers-ctrl")) {
-        layersPanelEl.classList.remove("open");
-      }
+    tab.addEventListener("click", function () {
+      var open = panel.classList.toggle("open");
+      tab.innerHTML = open ? "&#8250;" : "&#8249;"; // › when open, ‹ when closed
     });
-  }
 
-  // ── Overlay layers (lazy-loaded) ─────────────────────────────────────────────
+    function addHeading(text) {
+      var h = document.createElement("div");
+      h.className = "tools-panel-heading";
+      h.textContent = text;
+      content.appendChild(h);
+    }
 
-  function addOverlayControl(geojsonPath, sourceId, label, colorProperty) {
-    var panel = document.querySelector(".layers-panel");
-    if (!panel) return;
+    function addCheckbox(labelText, onChange) {
+      var lbl = document.createElement("label");
+      lbl.className = "tools-panel-label";
+      var cb = document.createElement("input");
+      cb.type = "checkbox";
+      var span = document.createElement("span");
+      span.textContent = labelText;
+      lbl.appendChild(cb);
+      lbl.appendChild(span);
+      content.appendChild(lbl);
+      cb.addEventListener("change", onChange);
+      return { cb: cb, span: span };
+    }
 
-    var lbl = document.createElement("label");
-    lbl.className = "overlay-ctrl-label";
-    var checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    var span = document.createElement("span");
-    span.textContent = label;
-    lbl.appendChild(checkbox);
-    lbl.appendChild(span);
-    panel.appendChild(lbl);
+    // Base map section
+    addHeading("Base map");
 
-    var loaded = false;
-    checkbox.addEventListener("change", async function () {
-      if (!loaded) {
-        checkbox.disabled = true;
-        span.textContent = label + " (loading…)";
-        try {
-          var res = await fetch(geojsonPath);
-          var data = await res.json();
+    addCheckbox("Satellite", function () {
+      map.setLayoutProperty("satellite-layer", "visibility", this.checked ? "visible" : "none");
+    });
 
-          var palette = ["#4285f4","#ea4335","#fbbc04","#34a853","#ff6d00","#46bdc6","#7b1fa2","#f06292"];
-          var colorExpr = "#4285f4";
-
-          if (colorProperty) {
-            var uniqueVals = [...new Set(data.features.map(function (f) { return f.properties[colorProperty]; }))];
-            var matchExpr = ["match", ["get", colorProperty]];
-            uniqueVals.forEach(function (val, i) { matchExpr.push(val, palette[i % palette.length]); });
-            matchExpr.push("#888");
-            colorExpr = matchExpr;
-          }
-
-          var firstLabelLayer = map.getStyle().layers.find(function (l) {
-            return l.type === "symbol" && l.layout && l.layout["text-field"];
-          });
-          var beforeLayer = firstLabelLayer ? firstLabelLayer.id : undefined;
-
-          map.addSource(sourceId, { type: "geojson", data: data });
-          map.addLayer({ id: sourceId + "-fill", type: "fill", source: sourceId,
-            layout: { visibility: "none" },
-            paint: { "fill-color": colorExpr, "fill-opacity": 0.2 }
-          }, beforeLayer);
-          map.addLayer({ id: sourceId + "-line", type: "line", source: sourceId,
-            layout: { visibility: "none" },
-            paint: { "line-color": colorExpr, "line-width": 1.5 }
-          }, beforeLayer);
-          if (colorProperty) {
-            map.addLayer({ id: sourceId + "-labels", type: "symbol", source: sourceId,
-              layout: {
-                visibility: "none",
-                "text-field": ["get", colorProperty],
-                "text-size": 11,
-                "text-font": ["Open Sans Semibold", "Arial Unicode MS Regular"],
-                "text-max-width": 8
-              },
-              paint: { "text-color": "#222", "text-halo-color": "#fff", "text-halo-width": 1.5 }
-            }, beforeLayer);
-          }
-
-          loaded = true;
-        } catch (e) {
-          console.error("Overlay load error:", sourceId, e);
-          span.textContent = label + " (error)";
-          checkbox.disabled = false;
-          return;
-        }
-        span.textContent = label;
-        checkbox.disabled = false;
-      }
-
+    addCheckbox("Topo", function () {
       var vis = this.checked ? "visible" : "none";
-      map.setLayoutProperty(sourceId + "-fill", "visibility", vis);
-      map.setLayoutProperty(sourceId + "-line", "visibility", vis);
-      if (colorProperty && map.getLayer(sourceId + "-labels")) {
-        map.setLayoutProperty(sourceId + "-labels", "visibility", vis);
-      }
+      if (map.getLayer("contour-lines"))  map.setLayoutProperty("contour-lines",  "visibility", vis);
+      if (map.getLayer("contour-labels")) map.setLayoutProperty("contour-labels", "visibility", vis);
+      map.setTerrain({ source: "terrain-dem", exaggeration: this.checked ? 2 : 1 });
+    });
+
+    addCheckbox("Buildings", function () {
+      var vis = this.checked ? "visible" : "none";
+      buildingLayers.forEach(function (id) {
+        if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", vis);
+      });
+    });
+
+    // Overlays section
+    var sep = document.createElement("hr");
+    sep.className = "tools-panel-sep";
+    content.appendChild(sep);
+    addHeading("Overlays");
+
+    OVERLAYS.forEach(function (ov, i) {
+      var sourceId = "overlay" + i;
+      var loaded = false;
+      var refs = addCheckbox(ov.label, function () { /* wired below */ });
+      var cb = refs.cb, span = refs.span;
+
+      cb.addEventListener("change", async function () {
+        if (!loaded) {
+          cb.disabled = true;
+          span.textContent = ov.label + " (loading…)";
+          try {
+            var res = await fetch(ov.file);
+            var data = await res.json();
+
+            var palette = ["#4285f4","#ea4335","#fbbc04","#34a853","#ff6d00","#46bdc6","#7b1fa2","#f06292"];
+            var colorExpr = "#4285f4";
+            if (ov.colorProperty) {
+              var uniqueVals = [...new Set(data.features.map(function (f) { return f.properties[ov.colorProperty]; }))];
+              var matchExpr = ["match", ["get", ov.colorProperty]];
+              uniqueVals.forEach(function (val, idx) { matchExpr.push(val, palette[idx % palette.length]); });
+              matchExpr.push("#888");
+              colorExpr = matchExpr;
+            }
+            var firstLabel = map.getStyle().layers.find(function (l) {
+              return l.type === "symbol" && l.layout && l.layout["text-field"];
+            });
+            var beforeLayer = firstLabel ? firstLabel.id : undefined;
+
+            map.addSource(sourceId, { type: "geojson", data: data });
+            map.addLayer({ id: sourceId + "-fill", type: "fill", source: sourceId,
+              layout: { visibility: "none" },
+              paint: { "fill-color": colorExpr, "fill-opacity": 0.2 }
+            }, beforeLayer);
+            map.addLayer({ id: sourceId + "-line", type: "line", source: sourceId,
+              layout: { visibility: "none" },
+              paint: { "line-color": colorExpr, "line-width": 1.5 }
+            }, beforeLayer);
+            if (ov.colorProperty) {
+              map.addLayer({ id: sourceId + "-labels", type: "symbol", source: sourceId,
+                layout: {
+                  visibility: "none",
+                  "text-field": ["get", ov.colorProperty],
+                  "text-size": 11,
+                  "text-font": ["Open Sans Semibold", "Arial Unicode MS Regular"],
+                  "text-max-width": 8
+                },
+                paint: { "text-color": "#222", "text-halo-color": "#fff", "text-halo-width": 1.5 }
+              }, beforeLayer);
+            }
+            loaded = true;
+          } catch (e) {
+            console.error("Overlay load error:", sourceId, e);
+            span.textContent = ov.label + " (error)";
+            cb.disabled = false;
+            return;
+          }
+          span.textContent = ov.label;
+          cb.disabled = false;
+        }
+
+        var vis = this.checked ? "visible" : "none";
+        map.setLayoutProperty(sourceId + "-fill", "visibility", vis);
+        map.setLayoutProperty(sourceId + "-line", "visibility", vis);
+        if (ov.colorProperty && map.getLayer(sourceId + "-labels")) {
+          map.setLayoutProperty(sourceId + "-labels", "visibility", vis);
+        }
+      });
     });
   }
 
@@ -443,11 +389,8 @@
     initSatellite();
     initDefaultTerrain();
     initTopoOverlay();
-    initBuildingsToggle();
-    initLayersPanel();
-    OVERLAYS.forEach(function (ov, i) {
-      addOverlayControl(ov.file, "overlay" + i, ov.label, ov.colorProperty);
-    });
+    initBuildingsLayers();
+    initMapPanel();
     initDraw();
     initMeasure();
   });

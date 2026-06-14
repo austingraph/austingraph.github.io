@@ -211,68 +211,87 @@ body {
 }
 #panel footer a:hover { text-decoration: underline; }
 
-/* ── Map Tools ────────────────────────────────────────────────────────────── */
+/* ── Map Tools Panel (right-side slide-out) ───────────────────────────────── */
 
-.satellite-btn {
-  background: #fff;
+#map-tools-panel {
+  position: fixed;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%) translateX(calc(100% - 28px));
+  transition: transform 0.25s ease;
+  z-index: 20;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  pointer-events: auto;
+}
+
+#map-tools-panel.open {
+  transform: translateY(-50%) translateX(0);
+}
+
+#map-tools-tab {
+  width: 28px;
+  flex-shrink: 0;
+  background: rgba(18, 18, 22, 0.90);
+  color: #e8e8ea;
   border: none;
-  padding: 4px 10px;
-  font-size: 12px;
-  font-weight: 600;
+  border-radius: 6px 0 0 6px;
   cursor: pointer;
-  border-radius: 4px;
-  white-space: nowrap;
-}
-.satellite-btn.active { background: #2d7a1a; color: #fff; }
-
-/* Override MapLibre's 29×29px ctrl-group button rule for text buttons */
-.maplibregl-ctrl-group button.satellite-btn {
-  width: auto;
-  height: auto;
-  display: inline-block;
-  padding: 4px 10px;
-}
-
-.layers-ctrl { position: relative; }
-.layers-panel {
-  display: none;
-  position: absolute;
-  top: 100%;
-  left: 0;
-  background: #fff;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  padding: 8px 12px;
-  min-width: 160px;
-  z-index: 10;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-}
-.layers-panel.open { display: block; }
-
-.overlay-ctrl-label {
+  font-size: 18px;
+  line-height: 1;
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
+  justify-content: center;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.35);
+}
+#map-tools-tab:hover { background: rgba(40, 40, 50, 0.96); }
+
+#map-tools-content {
+  background: rgba(18, 18, 22, 0.94);
+  backdrop-filter: blur(8px);
+  color: #e8e8ea;
+  min-width: 170px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-shadow: -2px 0 16px rgba(0, 0, 0, 0.4);
+}
+
+.tools-panel-heading {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.1px;
+  color: #888;
+  margin: 8px 0 4px;
+}
+.tools-panel-heading:first-child { margin-top: 0; }
+
+.tools-panel-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
   padding: 3px 0;
+  white-space: nowrap;
+}
+.tools-panel-label input[type="checkbox"] {
+  accent-color: #e8a838;
+  width: 14px;
+  height: 14px;
   cursor: pointer;
 }
 
-.draw-bar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  display: flex;
-  gap: 8px;
-  padding: 8px 12px;
-  background: rgba(18, 18, 22, 0.88);
-  backdrop-filter: blur(6px);
-  z-index: 5;
+.tools-panel-sep {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin: 6px 0 2px;
 }
 
+/* draw/measure button styles (kept for future panel integration) */
 .draw-tb-btn {
   background: rgba(255,255,255,0.1);
   border: 1px solid rgba(255,255,255,0.25);
