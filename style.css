@@ -251,7 +251,9 @@ body {
   background: rgba(18, 18, 22, 0.94);
   backdrop-filter: blur(8px);
   color: #e8e8ea;
-  min-width: 170px;
+  min-width: 200px;
+  max-height: 88vh;
+  overflow-y: auto;
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
@@ -291,62 +293,8 @@ body {
   margin: 6px 0 2px;
 }
 
-/* ── Parcel filter panel (left-side slide-out) ────────────────────────────── */
+/* ── Parcel filter (within the shared right-side map-tools panel) ──────────── */
 
-#filter-panel {
-  position: fixed;
-  top: 50%;
-  left: 0;
-  transform: translateY(-50%) translateX(calc(-100% + 28px));
-  transition: transform 0.25s ease;
-  z-index: 12;
-  display: flex;
-  flex-direction: row;
-  align-items: stretch;
-}
-#filter-panel.open {
-  transform: translateY(-50%) translateX(0);
-}
-
-#filter-tab {
-  width: 28px;
-  flex-shrink: 0;
-  background: rgba(18, 18, 22, 0.90);
-  color: #e8e8ea;
-  border: none;
-  border-radius: 0 6px 6px 0;
-  cursor: pointer;
-  font-size: 18px;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.35);
-}
-#filter-tab:hover { background: rgba(40, 40, 50, 0.96); }
-
-#filter-content {
-  background: rgba(18, 18, 22, 0.94);
-  backdrop-filter: blur(8px);
-  color: #e8e8ea;
-  width: 230px;
-  max-height: 80vh;
-  overflow-y: auto;
-  padding: 14px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  box-shadow: 2px 0 16px rgba(0, 0, 0, 0.4);
-}
-
-.filter-heading {
-  font-size: 13px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 1.1px;
-  color: #e8a838;
-  margin-bottom: 8px;
-}
 .filter-subheading {
   font-size: 10px;
   font-weight: 700;
