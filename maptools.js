@@ -252,24 +252,40 @@
             map.addSource(sourceId, { type: "geojson", data: data });
             map.addLayer({ id: sourceId + "-fill", type: "fill", source: sourceId,
               layout: { visibility: "none" },
-              paint: { "fill-color": colorExpr, "fill-opacity": 0.2 }
+              paint: { "fill-color": colorExpr, "fill-opacity": 0.35 }
             }, beforeLayer);
             map.addLayer({ id: sourceId + "-line", type: "line", source: sourceId,
               layout: { visibility: "none" },
-              paint: { "line-color": colorExpr, "line-width": 1.5 }
+              paint: { "line-color": "#222", "line-width": 2, "line-opacity": 0.85 }
             }, beforeLayer);
             if (ov.colorProperty) {
               map.addLayer({ id: sourceId + "-labels", type: "symbol", source: sourceId,
                 layout: {
                   visibility: "none",
                   "text-field": ["get", ov.colorProperty],
-                  "text-size": 11,
-                  "text-font": ["Open Sans Semibold", "Arial Unicode MS Regular"],
+                  "text-size": 13,
+                  "text-font": ["Noto Sans Regular"],
                   "text-max-width": 8
                 },
-                paint: { "text-color": "#222", "text-halo-color": "#fff", "text-halo-width": 1.5 }
+                paint: { "text-color": "#111", "text-halo-color": "#fff", "text-halo-width": 2 }
               }, beforeLayer);
             }
+
+            // Fit map to show the overlay on first enable
+            var minLon=Infinity, maxLon=-Infinity, minLat=Infinity, maxLat=-Infinity;
+            data.features.forEach(function(f) {
+              var walk = function(c) {
+                if (typeof c[0]==='number') {
+                  if (c[0]<minLon) minLon=c[0]; if (c[0]>maxLon) maxLon=c[0];
+                  if (c[1]<minLat) minLat=c[1]; if (c[1]>maxLat) maxLat=c[1];
+                } else { c.forEach(walk); }
+              };
+              if (f.geometry) walk(f.geometry.coordinates);
+            });
+            if (minLon!==Infinity) {
+              map.fitBounds([[minLon,minLat],[maxLon,maxLat]], { padding: 40, duration: 800, maxZoom: 14 });
+            }
+
             loaded = true;
           } catch (e) {
             console.error("Overlay load error:", sourceId, e);
