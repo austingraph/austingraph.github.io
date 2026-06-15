@@ -55,11 +55,12 @@
       encoding: "terrarium",
       maxzoom: 14
     });
+    // Hillshade is subtle and off by default so it doesn't occlude envelope overlays.
     map.addLayer({
       id: "hillshade-layer",
       type: "hillshade",
       source: "terrain-dem",
-      layout: { visibility: "visible" },
+      layout: { visibility: "none" },
       paint: {
         "hillshade-shadow-color": "#473B24",
         "hillshade-highlight-color": "#ffffff",
@@ -68,19 +69,7 @@
         "hillshade-exaggeration": 0.3
       }
     });
-    function enableTerrain() {
-      map.setTerrain({ source: "terrain-dem", exaggeration: 1 });
-    }
-    if (map.isSourceLoaded("terrain-dem")) {
-      enableTerrain();
-    } else {
-      map.on("sourcedata", function onDemReady(e) {
-        if (e.sourceId === "terrain-dem" && map.isSourceLoaded("terrain-dem")) {
-          map.off("sourcedata", onDemReady);
-          enableTerrain();
-        }
-      });
-    }
+    // 3D terrain is off by default; the Topo checkbox enables it.
   }
 
   // ── Topo overlay (contour lines — layers only, no control) ──────────────────
@@ -205,7 +194,8 @@
       var vis = this.checked ? "visible" : "none";
       if (map.getLayer("contour-lines"))  map.setLayoutProperty("contour-lines",  "visibility", vis);
       if (map.getLayer("contour-labels")) map.setLayoutProperty("contour-labels", "visibility", vis);
-      map.setTerrain({ source: "terrain-dem", exaggeration: this.checked ? 2 : 1 });
+      if (map.getLayer("hillshade-layer")) map.setLayoutProperty("hillshade-layer", "visibility", vis);
+      map.setTerrain(this.checked ? { source: "terrain-dem", exaggeration: 2 } : null);
     });
 
     addCheckbox("Buildings", function () {

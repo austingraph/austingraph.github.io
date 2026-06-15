@@ -128,6 +128,11 @@
       d.buildable ? { type: 'FeatureCollection', features: [d.buildable] } : EMPTY_FC
     );
 
+    // Move envelope layers to top of stack so hillshade/other layers don't occlude them.
+    for (const id of ['envelope-setback-fill', 'envelope-buildable-fill', 'envelope-buildable-outline', 'envelope-massing']) {
+      if (map.getLayer(id)) map.moveLayer(id);
+    }
+
     window.AG.lastEnvelope = d;
     window.dispatchEvent(new CustomEvent('envelope:ready', { detail: { envelope: d } }));
 
