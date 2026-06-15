@@ -141,6 +141,7 @@
       reportMap.on('click', onMeasureClick);
 
       mapReady = true;
+      reportMap.resize();   // ensure canvas matches container after modal opens
       renderReport();
     });
   }
@@ -553,7 +554,7 @@
     current.envelope = null;
 
     if (!reportMap) {
-      createReportMap();          // renderReport() fires from its load handler
+      requestAnimationFrame(() => createReportMap()); // let CSS layout apply before MapLibre reads container size
     } else {
       reportMap.resize();
       if (draw) draw.clear();
