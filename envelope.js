@@ -117,6 +117,8 @@
       d.buildable ? { type: 'FeatureCollection', features: [d.buildable] } : EMPTY_FC
     );
 
+    window.AG.lastEnvelope = d;
+
     const target = d.buildable || d.setback_zone;
     if (target) {
       map.easeTo({
@@ -160,6 +162,7 @@
     fetchToken++;
     resetFields('');
     clearLayers();
+    window.AG.lastEnvelope = null;
     map.easeTo({ pitch: 0, bearing: 0, duration: 600 });
   });
 })();
