@@ -1,11 +1,11 @@
-// austingraph.chat — development envelope (text panel)
+// austingraph.chat — development envelope overlay
 // Listens for parcel:select / parcel:deselect from app.js, calls the
-// compute_envelope PostgREST RPC, and updates the "Development potential"
-// text fields in the left panel. Visual overlays (setback zone, buildable
-// footprint, 3D massing) live in the Parcel Report mini-map (report.js).
+// compute_envelope PostgREST RPC, and renders the setback zone, buildable
+// footprint, and a max-height 3D massing (fill-extrusion) on the MAIN map,
+// plus the "Development potential" panel section text fields.
 
 (() => {
-  const { SUPABASE_URL, SUPABASE_KEY } = window.AG;
+  const { map, SUPABASE_URL, SUPABASE_KEY } = window.AG;
 
   const EMPTY_FC = { type: 'FeatureCollection', features: [] };
 
@@ -18,6 +18,41 @@
   const elUnits      = document.getElementById('env-units');
   const elStatus     = document.getElementById('env-status');
 
+  map.on('load', () => {
+    map.addSource('envelope-setback',   { type: 'geojson', data: EMPTY_FC });
+    map.addSource('envelope-buildable', { type: 'geojson', data: EMPTY_FC });
+
+    map.addLayer({
+      id: 'envelope-setback-fill',
+      type: 'fill',
+      source: 'envelope-setback',
+      paint: { 'fill-color': '#d9534f', 'fill-opacity': 0.25 },
+    });
+    map.addLayer({
+      id: 'envelope-buildable-fill',
+      type: 'fill',
+      source: 'envelope-buildable',
+      paint: { 'fill-color': '#4caf7d', 'fill-opacity': 0.18 },
+    });
+    map.addLayer({
+      id: 'envelope-buildable-outline',
+      type: 'line',
+      source: 'envelope-buildable',
+      paint: { 'line-color': '#4caf7d', 'line-width': 1.5 },
+    });
+    map.addLayer({
+      id: 'envelope-massing',
+      type: 'fill-extrusion',
+      source: 'envelope-buildable',
+      paint: {
+        'fill-extrusion-color': '#e8a838',
+        'fill-extrusion-height': ['coalesce', ['get', 'height_m'], 0],
+        'fill-extrusion-base': 0,
+        'fill-extrusion-opacity': 0.55,
+      },
+    });
+  });
+
   function fmtSqft(n) {
     return `${Math.round(n).toLocaleString()} sq ft`;
   }
@@ -27,6 +62,27 @@
       el.textContent = '—';
     }
     elStatus.textContent = msg || '';
+  }
+
+  function clearLayers() {
+    map.getSource('envelope-setback')?.setData(EMPTY_FC);
+    map.getSource('envelope-buildable')?.setData(EMPTY_FC);
+  }
+
+  function bboxCenter(geometry) {
+    let minLon = Infinity, maxLon = -Infinity, minLat = Infinity, maxLat = -Infinity;
+    const walk = (c) => {
+      if (typeof c[0] === 'number') {
+        if (c[0] < minLon) minLon = c[0];
+        if (c[0] > maxLon) maxLon = c[0];
+        if (c[1] < minLat) minLat = c[1];
+        if (c[1] > maxLat) maxLat = c[1];
+      } else {
+        c.forEach(walk);
+      }
+    };
+    walk(geometry.coordinates);
+    return [(minLon + maxLon) / 2, (minLat + maxLat) / 2];
   }
 
   function render(d) {
@@ -39,6 +95,7 @@
       };
       resetFields(messages[d?.status] || 'Could not compute envelope.');
       if (d?.zoning_ztype) elZoning.textContent = d.zoning_ztype;
+      clearLayers();
       window.AG.lastEnvelope = null;
       window.dispatchEvent(new CustomEvent('envelope:ready', { detail: { envelope: null } }));
       return;
@@ -64,8 +121,26 @@
     }
     elStatus.textContent = notes.join(' ');
 
+    map.getSource('envelope-setback')?.setData(
+      d.setback_zone ? { type: 'FeatureCollection', features: [d.setback_zone] } : EMPTY_FC
+    );
+    map.getSource('envelope-buildable')?.setData(
+      d.buildable ? { type: 'FeatureCollection', features: [d.buildable] } : EMPTY_FC
+    );
+
     window.AG.lastEnvelope = d;
     window.dispatchEvent(new CustomEvent('envelope:ready', { detail: { envelope: d } }));
+
+    const target = d.buildable || d.setback_zone;
+    if (target) {
+      map.easeTo({
+        center: bboxCenter(target.geometry),
+        zoom: 17.2,
+        pitch: 45,
+        bearing: 0,
+        duration: 900,
+      });
+    }
   }
 
   let fetchToken = 0;
@@ -73,6 +148,7 @@
   window.addEventListener('parcel:select', (e) => {
     const token = ++fetchToken;
     resetFields('Computing development envelope…');
+    clearLayers();
 
     fetch(`${SUPABASE_URL}/rest/v1/rpc/compute_envelope`, {
       method: 'POST',
@@ -85,7 +161,7 @@
     })
       .then((r) => r.json())
       .then((d) => {
-        if (token !== fetchToken) return;
+        if (token !== fetchToken) return; // stale response
         render(d);
       })
       .catch(() => {
@@ -97,6 +173,8 @@
   window.addEventListener('parcel:deselect', () => {
     fetchToken++;
     resetFields('');
+    clearLayers();
     window.AG.lastEnvelope = null;
+    map.easeTo({ pitch: 0, bearing: 0, duration: 600 });
   });
 })();

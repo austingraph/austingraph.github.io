@@ -1,8 +1,9 @@
 // austingraph.chat — Parcel Report
-// Live MapLibre mini-map in the report popup. Fetches compute_envelope
-// independently so setback/buildable overlays are reliable regardless of
-// main-map timing. Supports terra-draw annotation, distance measurement,
-// and PDF/print export via canvas snapshot.
+// Live MapLibre mini-map in the report popup, showing the selected parcel
+// outline over aerial/street imagery. Supports terra-draw annotation, distance
+// measurement, and PDF/print export via canvas snapshot. The development
+// envelope (setback / buildable / 3D massing) is visualized on the MAIN map by
+// envelope.js; the report focuses on the parcel, its data, and annotations.
 
 (() => {
   const reportBtn = document.getElementById('panel-report-btn');
@@ -20,14 +21,10 @@
   let reportMap    = null;   // MapLibre instance, created lazily and reused
   let sourcesReady = false;  // true once load handler has added sources+layers
   let pendingGeom  = null;   // parcel geometry waiting to be drawn
-  let pendingEnv   = null;   // envelope data waiting to be drawn (null until fetch)
-  let envToken     = 0;      // stale-fetch guard
 
   let draw       = null;
   let measuring  = false;
   let measurePts = [];
-
-  const checks = { setback: null, buildable: null };
 
   // ── Basemap style ─────────────────────────────────────────────────────────────
   const REPORT_STYLE = {
@@ -95,26 +92,8 @@
     return `${Math.round(ft).toLocaleString()} ft`;
   }
 
-  // ── Layer visibility ──────────────────────────────────────────────────────────
-  const SETBACK_LAYERS   = ['rp-setback-fill', 'rp-setback-outline'];
-  const BUILDABLE_LAYERS = ['rp-buildable-fill', 'rp-buildable-outline'];
-
-  function setVisible(ids, visible) {
-    for (const id of ids) {
-      if (reportMap?.getLayer(id))
-        reportMap.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
-    }
-  }
-
-  function syncLayers() {
-    if (!sourcesReady || !reportMap) return;
-    setVisible(SETBACK_LAYERS,   !!checks.setback?.checked);
-    setVisible(BUILDABLE_LAYERS, !!checks.buildable?.checked);
-  }
-
-  // ── Apply pending data to the map ─────────────────────────────────────────────
-  // Called from: (1) map load handler, (2) envelope fetch callback.
-  // Both just set pendingGeom/pendingEnv then call applyPending().
+  // ── Apply pending parcel geometry to the map ──────────────────────────────────
+  // Called from the map load handler and from openReport() on re-open.
   function applyPending() {
     if (!sourcesReady || !reportMap) return;
 
@@ -126,22 +105,10 @@
         : EMPTY
     );
 
-    const sz = pendingEnv?.setback_zone;
-    reportMap.getSource('rp-setback')?.setData(
-      sz ? { type: 'FeatureCollection', features: [sz] } : EMPTY
-    );
-
-    const bl = pendingEnv?.buildable;
-    reportMap.getSource('rp-buildable')?.setData(
-      bl ? { type: 'FeatureCollection', features: [bl] } : EMPTY
-    );
-
     if (pendingGeom) {
       reportMap.fitBounds(bboxFromGeometry(pendingGeom),
         { padding: 80, maxZoom: 19, pitch: 0, bearing: 0, animate: false });
     }
-
-    syncLayers();
   }
 
   // ── Create the mini-map (once) ────────────────────────────────────────────────
@@ -159,25 +126,11 @@
     reportMap.on('load', () => {
       const EMPTY = { type: 'FeatureCollection', features: [] };
 
-      reportMap.addSource('rp-parcel',    { type: 'geojson', data: EMPTY });
-      reportMap.addSource('rp-setback',   { type: 'geojson', data: EMPTY });
-      reportMap.addSource('rp-buildable', { type: 'geojson', data: EMPTY });
+      reportMap.addSource('rp-parcel', { type: 'geojson', data: EMPTY });
 
       // Parcel outline
       reportMap.addLayer({ id: 'rp-parcel-outline', type: 'line', source: 'rp-parcel',
         paint: { 'line-color': '#000', 'line-width': 2.5 } });
-
-      // Setback zone
-      reportMap.addLayer({ id: 'rp-setback-fill', type: 'fill', source: 'rp-setback',
-        paint: { 'fill-color': '#d9534f', 'fill-opacity': 0.3 } });
-      reportMap.addLayer({ id: 'rp-setback-outline', type: 'line', source: 'rp-setback',
-        paint: { 'line-color': '#d9534f', 'line-width': 1.2 } });
-
-      // Buildable footprint
-      reportMap.addLayer({ id: 'rp-buildable-fill', type: 'fill', source: 'rp-buildable',
-        paint: { 'fill-color': '#4caf7d', 'fill-opacity': 0.25 } });
-      reportMap.addLayer({ id: 'rp-buildable-outline', type: 'line', source: 'rp-buildable',
-        paint: { 'line-color': '#4caf7d', 'line-width': 1.5 } });
 
       // Measure layers
       reportMap.addSource('rp-measure-pts',  { type: 'geojson', data: EMPTY });
@@ -261,48 +214,6 @@
     redrawMeasure();
   }
 
-  // ── Fetch envelope for the report ─────────────────────────────────────────────
-  function fetchEnvelope(parcelId, envNoteEl) {
-    const token = ++envToken;
-    if (envNoteEl) envNoteEl.textContent = 'Loading development envelope…';
-
-    fetch(`${window.AG.SUPABASE_URL}/rest/v1/rpc/compute_envelope`, {
-      method: 'POST',
-      headers: {
-        apikey: window.AG.SUPABASE_KEY,
-        Authorization: `Bearer ${window.AG.SUPABASE_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ p_parcel_id: parcelId }),
-    })
-      .then((r) => r.json())
-      .then((d) => {
-        if (token !== envToken) return;
-        if (!modal.classList.contains('open')) return;
-
-        pendingEnv = d?.status === 'ok' ? d : null;
-
-        if (envNoteEl) {
-          if (pendingEnv) {
-            envNoteEl.textContent = '';
-          } else {
-            const msgs = {
-              no_zoning: 'Outside City of Austin zoning — no envelope available.',
-              no_rules:  `Zoning ${d?.zoning_base} not yet in rules table.`,
-              not_found: 'Parcel not found in database.',
-            };
-            envNoteEl.textContent = msgs[d?.status] || 'Development envelope not available for this parcel.';
-          }
-        }
-
-        applyPending();
-      })
-      .catch(() => {
-        if (token !== envToken) return;
-        if (envNoteEl) envNoteEl.textContent = 'Could not fetch development envelope.';
-      });
-  }
-
   // ── Toolbar ───────────────────────────────────────────────────────────────────
   function buildToolbar() {
     toolbar.innerHTML = '';
@@ -310,31 +221,8 @@
     const row1 = document.createElement('div');
     row1.className = 'report-tb-row';
 
-    const layerLbl = document.createElement('span');
-    layerLbl.className = 'report-tool-label';
-    layerLbl.textContent = 'Layers:';
-    row1.appendChild(layerLbl);
-
-    function layerToggle(text, key) {
-      const lbl = document.createElement('label');
-      lbl.className = 'report-layer-check';
-      const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.checked = true;
-      checks[key] = cb;
-      cb.addEventListener('change', syncLayers);
-      const sp = document.createElement('span');
-      sp.textContent = text;
-      lbl.appendChild(cb); lbl.appendChild(sp);
-      return lbl;
-    }
-
-    row1.appendChild(layerToggle('Setback',   'setback'));
-    row1.appendChild(layerToggle('Buildable', 'buildable'));
-
     const baseLbl = document.createElement('span');
     baseLbl.className = 'report-tool-label';
-    baseLbl.style.marginLeft = '12px';
     baseLbl.textContent = 'Map:';
     row1.appendChild(baseLbl);
 
@@ -383,7 +271,7 @@
       if (mode === 'select') btn.classList.add('active');
       btn.addEventListener('click', () => {
         measuring = false;
-        reportMap?.getCanvas().style.cursor === '' || (reportMap.getCanvas().style.cursor = '');
+        if (reportMap) reportMap.getCanvas().style.cursor = '';
         measureBtn.classList.remove('active');
         if (draw) draw.setMode(mode);
         Object.values(modeBtns).forEach((b) => b.classList.remove('active'));
@@ -445,12 +333,6 @@
     });
     row2.appendChild(printBtn);
     toolbar.appendChild(row2);
-
-    const envNoteEl = document.createElement('p');
-    envNoteEl.className = 'report-env-note';
-    toolbar.appendChild(envNoteEl);
-
-    return envNoteEl;
   }
 
   // ── Data summary ──────────────────────────────────────────────────────────────
@@ -539,12 +421,11 @@
     modal.classList.add('open');
     modal.setAttribute('aria-hidden', 'false');
 
-    const envNoteEl = buildToolbar();
+    buildToolbar();
     populateData(data);
     buildFooter(data);
 
     pendingGeom = data.geometry;
-    pendingEnv  = null;
 
     if (!reportMap) {
       // Double rAF: first frame commits display:flex layout; second reads correct dimensions.
@@ -555,8 +436,6 @@
       clearMeasure();
       applyPending();
     }
-
-    fetchEnvelope(data.parcelId, envNoteEl);
   }
 
   function closeReport() {
