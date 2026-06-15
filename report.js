@@ -110,7 +110,7 @@
 
       // Parcel outline
       reportMap.addLayer({ id: 'rp-parcel-outline', type: 'line', source: 'rp-parcel',
-        paint: { 'line-color': '#fff', 'line-width': 2.5 } });
+        paint: { 'line-color': '#000', 'line-width': 2.5 } });
 
       // Setback zone
       reportMap.addLayer({ id: 'rp-setback-fill', type: 'fill', source: 'rp-setback',
@@ -266,7 +266,7 @@
     );
 
     const bbox = bboxFromGeometry(parcelGeom);
-    reportMap.fitBounds(bbox, { padding: 80, maxZoom: 19, pitch: 0, bearing: 0, animate: false });
+    reportMap.fitBounds(bbox, { padding: 80, maxZoom: 19, pitch: checks.massing?.checked ? 50 : 0, bearing: 0, animate: false });
   }
 
   // ── Toolbar ──────────────────────────────────────────────────────────────────
@@ -301,7 +301,7 @@
 
     row1.appendChild(layerToggle('Setback', 'setback', true));
     row1.appendChild(layerToggle('Buildable', 'buildable', true));
-    row1.appendChild(layerToggle('3D Massing', 'massing', false, (on) => {
+    row1.appendChild(layerToggle('3D Massing', 'massing', true, (on) => {
       if (reportMap) reportMap.easeTo({ pitch: on ? 50 : 0, duration: 600 });
     }));
 
