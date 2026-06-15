@@ -1,47 +1,50 @@
 // austingraph.chat — Parcel Report
-// Opens a modal with a map snapshot the user can draw and measure on (mouse or
-// touch), a parcel data summary, a notes field, and a print button. Annotations
-// are drawn onto an HTML5 canvas overlaid on the snapshot, so they appear in the
-// printed/PDF document. Triggered from the left detail panel.
+// A live interactive MapLibre mini-map embedded in the report popup, allowing
+// the user to toggle setback / buildable / 3D massing overlays and annotate the
+// parcel with terra-draw tools (line, polygon, freehand, point), then print or
+// save as PDF. The main map is never screenshotted; the report map creates its
+// own isolated MapLibre instance so the two viewports are fully independent.
 
 (() => {
-  const { map } = window.AG;
+  const reportBtn  = document.getElementById('panel-report-btn');
+  const modal      = document.getElementById('report-modal');
+  const closeBtn   = document.getElementById('report-close');
+  const toolbar    = document.getElementById('report-toolbar');
+  const mapEl      = document.getElementById('report-map');
+  const printImg   = document.getElementById('report-print-img');
+  const dataEl     = document.getElementById('report-data');
+  const notesEl    = document.getElementById('report-notes');
+  const footerEl   = document.getElementById('report-footer-bar');
+  const titleEl    = document.getElementById('report-title');
 
-  const modal     = document.getElementById('report-modal');
-  const closeBtn  = document.getElementById('report-close');
-  const toolbar   = document.getElementById('report-toolbar');
-  const snapshot  = document.getElementById('report-snapshot');
-  const dataEl    = document.getElementById('report-data');
-  const notesEl   = document.getElementById('report-notes');
-  const footerEl  = document.getElementById('report-footer-bar');
-  const titleEl   = document.getElementById('report-title');
-  const reportBtn = document.getElementById('panel-report-btn');
+  let reportMap = null;   // MapLibre instance, created lazily and reused
+  let draw = null;        // terra-draw instance
+  let measuring = false;
+  let measurePts = [];
 
-  const FT_PER_M = 3.280839895;
-  const M2_PER_ACRE = 4046.8564224;
-
-  // Drawing state
-  let imgEl = null;          // <img> map snapshot
-  let canvas = null;         // overlay <canvas>
-  let ctx = null;
-  let strokes = [];          // committed strokes
-  let current = null;        // in-progress stroke
-  let drawing = false;
-  let mode = 'pen';          // 'pen' | 'measure'
-  let snapMeta = null;       // { metersPerMapCssPx, mapCssWidth }
-
-  // ── Formatting ───────────────────────────────────────────────────────────────
-  function fmtArea(m2) {
-    const acres = m2 / M2_PER_ACRE;
-    const sqft  = m2 * FT_PER_M * FT_PER_M;
-    if (acres >= 0.5) return `${acres.toFixed(2)} ac (${Math.round(sqft).toLocaleString()} sq ft)`;
-    return `${Math.round(sqft).toLocaleString()} sq ft (${acres.toFixed(3)} ac)`;
-  }
-  function fmtFeet(m) {
-    const ft = m * FT_PER_M;
-    if (ft >= 1000) return `${ft.toLocaleString(undefined, { maximumFractionDigits: 0 })} ft (${(ft / 5280).toFixed(2)} mi)`;
-    return `${ft.toLocaleString(undefined, { maximumFractionDigits: 0 })} ft`;
-  }
+  // ── Basemap style (minimal — only two Esri raster sources) ───────────────────
+  const REPORT_STYLE = {
+    version: 8,
+    glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
+    sources: {
+      aerial: {
+        type: 'raster',
+        tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+        tileSize: 256,
+        attribution: 'Tiles &copy; Esri',
+      },
+      street: {
+        type: 'raster',
+        tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}'],
+        tileSize: 256,
+        attribution: 'Tiles &copy; Esri',
+      },
+    },
+    layers: [
+      { id: 'bg-aerial', type: 'raster', source: 'aerial' },
+      { id: 'bg-street', type: 'raster', source: 'street', layout: { visibility: 'none' } },
+    ],
+  };
 
   // ── Geometry helpers ─────────────────────────────────────────────────────────
   function eachCoord(geometry, fn) {
@@ -50,6 +53,7 @@
       c.forEach(walk);
     })(geometry.coordinates);
   }
+
   function bboxFromGeometry(geometry) {
     let minLon = Infinity, maxLon = -Infinity, minLat = Infinity, maxLat = -Infinity;
     eachCoord(geometry, ([lon, lat]) => {
@@ -60,146 +64,371 @@
     });
     return [[minLon, minLat], [maxLon, maxLat]];
   }
+
   function centroid(geometry) {
     let sx = 0, sy = 0, n = 0;
     eachCoord(geometry, ([lon, lat]) => { sx += lon; sy += lat; n++; });
     return [sx / n, sy / n];
   }
 
-  // ── Map snapshot + drawing canvas ─────────────────────────────────────────────
-  function takeSnapshot() {
-    const data = window.AG.lastPanelData;
-    if (!data) { snapshot.innerHTML = '<div class="report-snap-loading">No parcel selected.</div>'; return; }
-    snapshot.innerHTML = '<div class="report-snap-loading">Rendering map…</div>';
+  // ── Formatting ───────────────────────────────────────────────────────────────
+  const FT_PER_M = 3.280839895;
+  const M2_PER_ACRE = 4046.8564224;
 
-    map.fitBounds(bboxFromGeometry(data.geometry), { padding: 60, maxZoom: 19, animate: false });
-
-    let done = false;
-    const render = () => {
-      if (done) return;
-      done = true;
-      const c = map.getCanvas();
-      const lat = map.getCenter().lat;
-      const zoom = map.getZoom();
-      // meters per CSS pixel in the map viewport (512-tile web-mercator convention)
-      snapMeta = {
-        metersPerMapCssPx: 40075016.686 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom + 9),
-        mapCssWidth: c.clientWidth,
-      };
-      let url;
-      try { url = c.toDataURL('image/png'); }
-      catch (e) { snapshot.innerHTML = '<div class="report-snap-loading">Snapshot unavailable (browser blocked canvas export).</div>'; return; }
-
-      snapshot.innerHTML = '';
-      imgEl = document.createElement('img');
-      imgEl.alt = `Map snapshot for parcel ${data.parcelId}`;
-      canvas = document.createElement('canvas');
-      canvas.id = 'report-draw-canvas';
-      snapshot.appendChild(imgEl);
-      snapshot.appendChild(canvas);
-
-      imgEl.onload = () => {
-        // Canvas internal resolution = snapshot's natural (device) resolution, so
-        // it stays pixel-aligned with the image at any CSS display size.
-        canvas.width = imgEl.naturalWidth;
-        canvas.height = imgEl.naturalHeight;
-        ctx = canvas.getContext('2d');
-        attachDrawHandlers();
-        redraw();
-      };
-      imgEl.src = url;
-    };
-
-    map.once('idle', render);
-    setTimeout(render, 1200); // fallback if the view didn't change (idle won't fire)
+  function fmtArea(m2) {
+    const acres = m2 / M2_PER_ACRE;
+    const sqft  = m2 * FT_PER_M * FT_PER_M;
+    if (acres >= 0.5) return `${acres.toFixed(2)} ac (${Math.round(sqft).toLocaleString()} sq ft)`;
+    return `${Math.round(sqft).toLocaleString()} sq ft (${acres.toFixed(3)} ac)`;
   }
 
-  // Pointer (CSS) → canvas-internal coordinates
-  function toCanvasXY(e) {
-    const r = canvas.getBoundingClientRect();
-    return {
-      x: (e.clientX - r.left) * (canvas.width / r.width),
-      y: (e.clientY - r.top) * (canvas.height / r.height),
-    };
-  }
-  function metersPerCanvasPx() {
-    if (!snapMeta || !canvas) return 0;
-    return snapMeta.metersPerMapCssPx * snapMeta.mapCssWidth / canvas.width;
+  function fmtFeet(m) {
+    const ft = m * FT_PER_M;
+    if (ft >= 1000) return `${Math.round(ft).toLocaleString()} ft (${(ft / 5280).toFixed(2)} mi)`;
+    return `${Math.round(ft).toLocaleString()} ft`;
   }
 
-  function drawStroke(s) {
-    if (!s.points.length) return;
-    const lw = Math.max(2, Math.round(canvas.width / 320));
-    ctx.lineJoin = ctx.lineCap = 'round';
-    ctx.lineWidth = lw;
-    ctx.strokeStyle = s.type === 'measure' ? '#0a66ff' : '#e01010';
-    ctx.beginPath();
-    ctx.moveTo(s.points[0].x, s.points[0].y);
-    for (let i = 1; i < s.points.length; i++) ctx.lineTo(s.points[i].x, s.points[i].y);
-    ctx.stroke();
+  // ── Create the mini-map (once) ───────────────────────────────────────────────
+  function createReportMap() {
+    reportMap = new maplibregl.Map({
+      container: mapEl,
+      style: REPORT_STYLE,
+      preserveDrawingBuffer: true,   // needed for print snapshot
+      attributionControl: false,
+      pitch: 0,
+      bearing: 0,
+    });
+    reportMap.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
 
-    if (s.type === 'measure' && s.points.length >= 2) {
-      const a = s.points[0], b = s.points[s.points.length - 1];
-      const dist = Math.hypot(b.x - a.x, b.y - a.y) * metersPerCanvasPx();
-      const label = fmtFeet(dist);
-      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-      const fpx = Math.max(15, Math.round(canvas.width / 48));
-      ctx.font = `bold ${fpx}px -apple-system, Arial, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      const tw = ctx.measureText(label).width;
-      ctx.fillStyle = 'rgba(255,255,255,0.88)';
-      ctx.fillRect(mx - tw / 2 - 6, my - fpx * 0.75, tw + 12, fpx * 1.5);
-      ctx.fillStyle = '#0a3aa0';
-      ctx.fillText(label, mx, my);
+    reportMap.on('load', () => {
+      const EMPTY = { type: 'FeatureCollection', features: [] };
+
+      // Sources
+      reportMap.addSource('rp-parcel',   { type: 'geojson', data: EMPTY });
+      reportMap.addSource('rp-setback',  { type: 'geojson', data: EMPTY });
+      reportMap.addSource('rp-buildable',{ type: 'geojson', data: EMPTY });
+
+      // Parcel outline
+      reportMap.addLayer({ id: 'rp-parcel-outline', type: 'line', source: 'rp-parcel',
+        paint: { 'line-color': '#fff', 'line-width': 2.5 } });
+
+      // Setback zone
+      reportMap.addLayer({ id: 'rp-setback-fill', type: 'fill', source: 'rp-setback',
+        paint: { 'fill-color': '#d9534f', 'fill-opacity': 0.3 } });
+      reportMap.addLayer({ id: 'rp-setback-outline', type: 'line', source: 'rp-setback',
+        paint: { 'line-color': '#d9534f', 'line-width': 1.2 } });
+
+      // Buildable footprint (flat)
+      reportMap.addLayer({ id: 'rp-buildable-fill', type: 'fill', source: 'rp-buildable',
+        paint: { 'fill-color': '#4caf7d', 'fill-opacity': 0.25 } });
+      reportMap.addLayer({ id: 'rp-buildable-outline', type: 'line', source: 'rp-buildable',
+        paint: { 'line-color': '#4caf7d', 'line-width': 1.5 } });
+
+      // 3D massing extrusion (hidden by default)
+      reportMap.addLayer({ id: 'rp-massing', type: 'fill-extrusion', source: 'rp-buildable',
+        layout: { visibility: 'none' },
+        paint: {
+          'fill-extrusion-color': '#4caf7d',
+          'fill-extrusion-opacity': 0.6,
+          'fill-extrusion-height': ['coalesce', ['get', 'height_m'], 6],
+          'fill-extrusion-base': 0,
+        },
+      });
+
+      // Measure layers
+      reportMap.addSource('rp-measure-pts',  { type: 'geojson', data: EMPTY });
+      reportMap.addSource('rp-measure-line', { type: 'geojson', data: EMPTY });
+      reportMap.addLayer({ id: 'rp-measure-line', type: 'line', source: 'rp-measure-line',
+        paint: { 'line-color': '#0a66ff', 'line-width': 2, 'line-dasharray': [3, 2] } });
+      reportMap.addLayer({ id: 'rp-measure-pts', type: 'circle', source: 'rp-measure-pts',
+        paint: { 'circle-radius': 5, 'circle-color': '#0a66ff',
+                 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } });
+      reportMap.addLayer({ id: 'rp-measure-labels', type: 'symbol', source: 'rp-measure-pts',
+        layout: { 'text-field': ['get', 'label'], 'text-size': 13,
+                  'text-offset': [0, -1.3], 'text-anchor': 'bottom',
+                  'text-font': ['Noto Sans Regular'] },
+        paint: { 'text-color': '#0a3aa0', 'text-halo-color': '#fff', 'text-halo-width': 2 } });
+
+      // Terra-draw annotation
+      initDraw();
+
+      // Map click for measure mode
+      reportMap.on('click', onMeasureClick);
+
+      // If open() was called before the map finished loading, apply data now
+      if (pendingData) { applyData(pendingData); pendingData = null; }
+    });
+  }
+
+  // ── Terra-draw annotation ────────────────────────────────────────────────────
+  function initDraw() {
+    const TD  = window.terraDraw;
+    const TDA = window.terraDrawMaplibreGlAdapter;
+    if (!TD || !TDA) return;
+    draw = new TD.TerraDraw({
+      adapter: new TDA.TerraDrawMapLibreGLAdapter({ map: reportMap, lib: maplibregl }),
+      modes: [
+        new TD.TerraDrawSelectMode(),
+        new TD.TerraDrawLineStringMode(),
+        new TD.TerraDrawPolygonMode(),
+        new TD.TerraDrawFreehandMode(),
+        new TD.TerraDrawPointMode(),
+      ],
+    });
+    draw.start();
+    draw.setMode('select');
+  }
+
+  // ── Measure ──────────────────────────────────────────────────────────────────
+  function haversine(a, b) {
+    const R = 6378137, toRad = (x) => x * Math.PI / 180;
+    const dLat = toRad(b[1] - a[1]), dLng = toRad(b[0] - a[0]);
+    const x = Math.sin(dLat / 2) ** 2 +
+              Math.cos(toRad(a[1])) * Math.cos(toRad(b[1])) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+  }
+
+  function redrawMeasure() {
+    let total = 0;
+    reportMap.getSource('rp-measure-pts')?.setData({
+      type: 'FeatureCollection',
+      features: measurePts.map((pt, i) => {
+        if (i > 0) total += haversine(measurePts[i - 1], pt);
+        const label = i === 0 ? 'Start' : fmtFeet(total);
+        return { type: 'Feature', geometry: { type: 'Point', coordinates: pt }, properties: { label } };
+      }),
+    });
+    reportMap.getSource('rp-measure-line')?.setData({
+      type: 'FeatureCollection',
+      features: measurePts.length > 1
+        ? [{ type: 'Feature', geometry: { type: 'LineString', coordinates: measurePts } }]
+        : [],
+    });
+  }
+
+  function clearMeasure() {
+    measurePts = [];
+    const EMPTY = { type: 'FeatureCollection', features: [] };
+    reportMap?.getSource('rp-measure-pts')?.setData(EMPTY);
+    reportMap?.getSource('rp-measure-line')?.setData(EMPTY);
+  }
+
+  function onMeasureClick(e) {
+    if (!measuring) return;
+    measurePts.push([e.lngLat.lng, e.lngLat.lat]);
+    redrawMeasure();
+  }
+
+  // ── Layer visibility helpers ─────────────────────────────────────────────────
+  const SETBACK_LAYERS   = ['rp-setback-fill', 'rp-setback-outline'];
+  const BUILDABLE_LAYERS = ['rp-buildable-fill', 'rp-buildable-outline'];
+
+  function setVisible(ids, visible) {
+    for (const id of ids) {
+      if (reportMap?.getLayer(id))
+        reportMap.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
     }
   }
 
-  function redraw() {
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    for (const s of strokes) drawStroke(s);
-    if (current) drawStroke(current);
+  // ── Apply parcel data to the map ─────────────────────────────────────────────
+  let pendingData = null;
+
+  function applyData({ parcelGeom, envelope }) {
+    const EMPTY = { type: 'FeatureCollection', features: [] };
+
+    reportMap.getSource('rp-parcel')?.setData(
+      parcelGeom ? { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: parcelGeom }] } : EMPTY
+    );
+
+    const sz = envelope?.setback_zone;
+    reportMap.getSource('rp-setback')?.setData(
+      sz ? { type: 'FeatureCollection', features: [sz] } : EMPTY
+    );
+
+    const bl = envelope?.buildable;
+    const hm = envelope?.max_height_ft ? envelope.max_height_ft * 0.3048 : 6;
+    reportMap.getSource('rp-buildable')?.setData(
+      bl ? { type: 'FeatureCollection', features: [{ ...bl, properties: { ...(bl.properties || {}), height_m: hm } }] } : EMPTY
+    );
+
+    const bbox = bboxFromGeometry(parcelGeom);
+    reportMap.fitBounds(bbox, { padding: 80, maxZoom: 19, pitch: 0, bearing: 0, animate: false });
   }
 
-  let handlersAttached = false;
-  function attachDrawHandlers() {
-    if (handlersAttached) return; // canvas element is recreated per snapshot; guard re-binding within one
-    handlersAttached = true;
+  // ── Toolbar ──────────────────────────────────────────────────────────────────
+  function buildToolbar(hasEnvelope) {
+    toolbar.innerHTML = '';
+
+    // Row 1: layer toggles
+    const row1 = document.createElement('div');
+    row1.className = 'report-tb-row';
+
+    const layerLbl = document.createElement('span');
+    layerLbl.className = 'report-tool-label';
+    layerLbl.textContent = 'Layers:';
+    row1.appendChild(layerLbl);
+
+    function layerToggle(text, ids, defaultOn, onClick) {
+      const lbl = document.createElement('label');
+      lbl.className = 'report-layer-check';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = defaultOn && hasEnvelope;
+      cb.disabled = !hasEnvelope && ids !== null;
+      if (ids) {
+        cb.addEventListener('change', () => {
+          setVisible(ids, cb.checked);
+          if (onClick) onClick(cb.checked);
+        });
+        setVisible(ids, defaultOn && hasEnvelope);
+      }
+      if (onClick && hasEnvelope) cb.addEventListener('change', () => onClick(cb.checked));
+      const sp = document.createElement('span');
+      sp.textContent = text;
+      lbl.appendChild(cb); lbl.appendChild(sp);
+      return lbl;
+    }
+
+    row1.appendChild(layerToggle('Setback', SETBACK_LAYERS, true));
+    row1.appendChild(layerToggle('Buildable', BUILDABLE_LAYERS, true));
+    row1.appendChild(layerToggle('3D Massing', null, false, (on) => {
+      if (!reportMap) return;
+      if (reportMap.getLayer('rp-massing'))
+        reportMap.setLayoutProperty('rp-massing', 'visibility', on ? 'visible' : 'none');
+      setVisible(BUILDABLE_LAYERS, !on);
+      reportMap.easeTo({ pitch: on ? 50 : 0, duration: 600 });
+    }));
+
+    // Basemap toggle
+    const baseLbl = document.createElement('span');
+    baseLbl.className = 'report-tool-label';
+    baseLbl.style.marginLeft = '12px';
+    baseLbl.textContent = 'Map:';
+    row1.appendChild(baseLbl);
+
+    const aerialBtn = document.createElement('button');
+    aerialBtn.textContent = 'Aerial';
+    aerialBtn.className = 'active';
+    const streetBtn = document.createElement('button');
+    streetBtn.textContent = 'Street';
+    aerialBtn.addEventListener('click', () => {
+      if (reportMap) {
+        reportMap.setLayoutProperty('bg-aerial', 'visibility', 'visible');
+        reportMap.setLayoutProperty('bg-street', 'visibility', 'none');
+      }
+      aerialBtn.classList.add('active'); streetBtn.classList.remove('active');
+    });
+    streetBtn.addEventListener('click', () => {
+      if (reportMap) {
+        reportMap.setLayoutProperty('bg-aerial', 'visibility', 'none');
+        reportMap.setLayoutProperty('bg-street', 'visibility', 'visible');
+      }
+      streetBtn.classList.add('active'); aerialBtn.classList.remove('active');
+    });
+    row1.appendChild(aerialBtn); row1.appendChild(streetBtn);
+    toolbar.appendChild(row1);
+
+    // Row 2: annotation + print
+    const row2 = document.createElement('div');
+    row2.className = 'report-tb-row';
+
+    const annotLbl = document.createElement('span');
+    annotLbl.className = 'report-tool-label';
+    annotLbl.textContent = 'Draw:';
+    row2.appendChild(annotLbl);
+
+    const modes = [
+      { label: '↖ Select',   mode: 'select' },
+      { label: '✏️ Freehand', mode: 'freehand' },
+      { label: '📏 Line',    mode: 'linestring' },
+      { label: '⬡ Area',    mode: 'polygon' },
+      { label: '📌 Marker',  mode: 'point' },
+    ];
+    const modeBtns = {};
+    modes.forEach(({ label, mode }) => {
+      const btn = document.createElement('button');
+      btn.textContent = label;
+      if (mode === 'select') btn.classList.add('active');
+      btn.addEventListener('click', () => {
+        measuring = false;
+        reportMap.getCanvas().style.cursor = '';
+        measureBtn.classList.remove('active');
+        if (draw) draw.setMode(mode);
+        Object.values(modeBtns).forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
+      modeBtns[mode] = btn;
+      row2.appendChild(btn);
+    });
+
+    // Measure mode (click to measure distance on map)
+    const measureBtn = document.createElement('button');
+    measureBtn.textContent = '📐 Measure';
+    measureBtn.addEventListener('click', () => {
+      measuring = !measuring;
+      measureBtn.classList.toggle('active', measuring);
+      reportMap.getCanvas().style.cursor = measuring ? 'crosshair' : '';
+      if (measuring && draw) {
+        draw.setMode('select');
+        Object.values(modeBtns).forEach((b) => b.classList.remove('active'));
+        modeBtns.select?.classList.add('active');
+      }
+    });
+    row2.appendChild(measureBtn);
+
+    const undoBtn = document.createElement('button');
+    undoBtn.textContent = 'Undo';
+    undoBtn.addEventListener('click', () => {
+      if (draw) {
+        const ids = draw.getSnapshot().map((f) => f.id);
+        if (ids.length) draw.removeFeatures([ids[ids.length - 1]]);
+      }
+    });
+    row2.appendChild(undoBtn);
+
+    const clearAnnotBtn = document.createElement('button');
+    clearAnnotBtn.textContent = 'Clear all';
+    clearAnnotBtn.addEventListener('click', () => {
+      if (draw) draw.clear();
+      clearMeasure();
+    });
+    row2.appendChild(clearAnnotBtn);
+
+    const spacer = document.createElement('span');
+    spacer.style.flex = '1';
+    row2.appendChild(spacer);
+
+    const printBtn = document.createElement('button');
+    printBtn.className = 'primary';
+    printBtn.textContent = 'Print / Save PDF';
+    printBtn.addEventListener('click', () => {
+      reportMap.once('idle', () => {
+        try {
+          printImg.src = reportMap.getCanvas().toDataURL('image/jpeg', 0.92);
+          printImg.onload = () => window.print();
+        } catch (e) {
+          window.print(); // fallback: print without snapshot
+        }
+      });
+      reportMap.triggerRepaint();
+    });
+    row2.appendChild(printBtn);
+    toolbar.appendChild(row2);
+
+    if (!hasEnvelope) {
+      const note = document.createElement('p');
+      note.className = 'report-env-note';
+      note.textContent = 'Setback, Buildable, and Massing layers will appear once the development envelope finishes computing.';
+      toolbar.appendChild(note);
+    }
   }
 
-  function onPointerDown(e) {
-    if (!canvas) return;
-    e.preventDefault();
-    try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
-    drawing = true;
-    current = { type: mode, points: [toCanvasXY(e)] };
-    redraw();
-  }
-  function onPointerMove(e) {
-    if (!drawing) return;
-    e.preventDefault();
-    const p = toCanvasXY(e);
-    if (mode === 'pen') current.points.push(p);
-    else current.points = [current.points[0], p]; // measure: straight segment
-    redraw();
-  }
-  function onPointerUp(e) {
-    if (!drawing) return;
-    drawing = false;
-    if (current && current.points.length) strokes.push(current);
-    current = null;
-    redraw();
+  // ── Data summary ─────────────────────────────────────────────────────────────
+  function el(id) {
+    const n = document.getElementById(id);
+    return (n && n.textContent.trim()) || '—';
   }
 
-  // Delegated pointer events on the snapshot wrap (canvas is recreated each open)
-  snapshot.addEventListener('pointerdown', (e) => { if (e.target === canvas) onPointerDown(e); });
-  snapshot.addEventListener('pointermove', onPointerMove);
-  window.addEventListener('pointerup', onPointerUp);
-  snapshot.addEventListener('pointercancel', onPointerUp);
-
-  // ── Data section ─────────────────────────────────────────────────────────────
-  function el(id) { const n = document.getElementById(id); return (n && n.textContent.trim()) || '—'; }
   function makeSection(title, rows) {
     const sec = document.createElement('div');
     sec.className = 'report-section';
@@ -223,86 +452,38 @@
     dataEl.innerHTML = '';
     const s = data.stats;
     dataEl.appendChild(makeSection('Parcel identity', [
-      ['TCAD ID', el('panel-parcel-id')],
-      ['Address', el('meta-address')],
-      ['Legal', el('meta-legal')],
+      ['TCAD ID',    el('panel-parcel-id')],
+      ['Address',    el('meta-address')],
+      ['Legal',      el('meta-legal')],
       ['TCAD Acres', el('meta-acres')],
-      ['Geo ID', el('meta-geoid')],
+      ['Geo ID',     el('meta-geoid')],
     ]));
     dataEl.appendChild(makeSection('Dimensions', [
-      ['Area', fmtArea(s.areaM2)],
-      ['Perimeter', fmtFeet(s.perimM)],
-      ['Width', fmtFeet(s.widthM)],
-      ['Height', fmtFeet(s.heightM)],
+      ['Area',       fmtArea(s.areaM2)],
+      ['Perimeter',  fmtFeet(s.perimM)],
+      ['Width',      fmtFeet(s.widthM)],
+      ['Height',     fmtFeet(s.heightM)],
     ]));
     dataEl.appendChild(makeSection('Development potential', [
-      ['Zoning', el('env-zoning')],
-      ['Setbacks', el('env-setbacks')],
-      ['Buildable ft²', el('env-buildable')],
-      ['Max FAR', el('env-far')],
+      ['Zoning',         el('env-zoning')],
+      ['Setbacks',       el('env-setbacks')],
+      ['Buildable ft²',  el('env-buildable')],
+      ['Max FAR',        el('env-far')],
       ['Impervious cap', el('env-impervious')],
-      ['Max height', el('env-height')],
-      ['Max units', el('env-units')],
+      ['Max height',     el('env-height')],
+      ['Max units',      el('env-units')],
     ]));
-    const casesEl = document.getElementById('conn-cases');
+    const casesEl  = document.getElementById('conn-cases');
     const permitsEl = document.getElementById('conn-permits');
-    const firstCase = casesEl?.querySelector('.conn-title')?.textContent || '—';
-    const caseStatus = casesEl?.querySelector('.conn-badge')?.textContent || '';
+    const firstCase   = casesEl?.querySelector('.conn-title')?.textContent || '—';
+    const caseStatus  = casesEl?.querySelector('.conn-badge')?.textContent  || '';
     const permitCount = permitsEl?.querySelectorAll('.conn-item').length ?? 0;
     dataEl.appendChild(makeSection('Civic connections', [
-      ['Latest case', firstCase + (caseStatus ? ` (${caseStatus})` : '')],
+      ['Latest case',  firstCase + (caseStatus ? ` (${caseStatus})` : '')],
       ['Permit count', permitCount > 0 ? String(permitCount) : '—'],
     ]));
   }
 
-  // ── Toolbar ──────────────────────────────────────────────────────────────────
-  function buildToolbar() {
-    toolbar.innerHTML = '';
-    mode = 'pen';
-
-    const lbl = document.createElement('span');
-    lbl.className = 'report-tool-label';
-    lbl.textContent = 'Draw:';
-    toolbar.appendChild(lbl);
-
-    const penBtn = document.createElement('button');
-    penBtn.textContent = '✏️ Pen';
-    penBtn.className = 'active';
-    const measureBtn = document.createElement('button');
-    measureBtn.textContent = '📏 Measure';
-
-    function setMode(m) {
-      mode = m;
-      penBtn.classList.toggle('active', m === 'pen');
-      measureBtn.classList.toggle('active', m === 'measure');
-    }
-    penBtn.addEventListener('click', () => setMode('pen'));
-    measureBtn.addEventListener('click', () => setMode('measure'));
-    toolbar.appendChild(penBtn);
-    toolbar.appendChild(measureBtn);
-
-    const undoBtn = document.createElement('button');
-    undoBtn.textContent = 'Undo';
-    undoBtn.addEventListener('click', () => { strokes.pop(); redraw(); });
-    toolbar.appendChild(undoBtn);
-
-    const clearBtn = document.createElement('button');
-    clearBtn.textContent = 'Clear';
-    clearBtn.addEventListener('click', () => { strokes = []; current = null; redraw(); });
-    toolbar.appendChild(clearBtn);
-
-    const spacer = document.createElement('span');
-    spacer.style.flex = '1';
-    toolbar.appendChild(spacer);
-
-    const printBtn = document.createElement('button');
-    printBtn.className = 'primary';
-    printBtn.textContent = 'Print / Save PDF';
-    printBtn.addEventListener('click', () => window.print());
-    toolbar.appendChild(printBtn);
-  }
-
-  // ── Footer ───────────────────────────────────────────────────────────────────
   function buildFooter(data) {
     const [lon, lat] = centroid(data.geometry);
     const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -315,30 +496,67 @@
 
   // ── Open / close ─────────────────────────────────────────────────────────────
   function openReport() {
-    const data = window.AG.lastPanelData;
+    const data = window.AG?.lastPanelData;
     if (!data) return;
+
+    const envelope = window.AG?.lastEnvelope || null;
+    const hasEnvelope = !!envelope;
+
     titleEl.textContent = `Parcel Report — ${data.parcelId}`;
     notesEl.value = '';
-    strokes = [];
-    current = null;
-
-    buildToolbar();
-    populateData(data);
-    buildFooter(data);
+    printImg.src = '';
+    printImg.style.display = 'none';
+    measuring = false;
+    measurePts = [];
 
     modal.classList.add('open');
     modal.setAttribute('aria-hidden', 'false');
-    takeSnapshot();
+
+    buildToolbar(hasEnvelope);
+    populateData(data);
+    buildFooter(data);
+
+    if (!reportMap) {
+      createReportMap();
+      pendingData = { parcelGeom: data.geometry, envelope };
+    } else if (reportMap.loaded()) {
+      applyData({ parcelGeom: data.geometry, envelope });
+      reportMap.resize();
+      if (draw) { draw.clear(); }
+      clearMeasure();
+    } else {
+      pendingData = { parcelGeom: data.geometry, envelope };
+      reportMap.resize();
+    }
   }
 
   function closeReport() {
     modal.classList.remove('open');
     modal.setAttribute('aria-hidden', 'true');
-    drawing = false;
+    measuring = false;
+    if (reportMap) reportMap.getCanvas().style.cursor = '';
   }
 
   reportBtn.addEventListener('click', openReport);
   closeBtn.addEventListener('click', closeReport);
   modal.addEventListener('click', (e) => { if (e.target === modal) closeReport(); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && modal.classList.contains('open')) closeReport(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modal.classList.contains('open')) closeReport();
+  });
+
+  // If the envelope arrives after the report is already open, refresh layers + toolbar
+  window.addEventListener('parcel:select', () => {
+    if (!modal.classList.contains('open')) return;
+    // Poll briefly for lastEnvelope (it arrives a few seconds after parcel:select)
+    const tid = setInterval(() => {
+      const env = window.AG?.lastEnvelope;
+      if (!env) return;
+      clearInterval(tid);
+      const data = window.AG?.lastPanelData;
+      if (!data || !reportMap?.loaded()) return;
+      applyData({ parcelGeom: data.geometry, envelope: env });
+      buildToolbar(true);
+    }, 500);
+    setTimeout(() => clearInterval(tid), 15000); // give up after 15s
+  });
 })();

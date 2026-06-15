@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>austingraph</title>
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
-  <link rel="stylesheet" href="style.css?v=20260614c" />
+  <link rel="stylesheet" href="style.css?v=20260615" />
 </head>
 <body>
   <div id="map"></div>
@@ -72,8 +72,12 @@
     <div id="report-modal-inner">
       <button id="report-close" aria-label="Close report">&times;</button>
       <h2 id="report-title">Parcel Report</h2>
+      <!-- Toolbar injected by report.js -->
       <div id="report-toolbar"></div>
-      <div id="report-snapshot"></div>
+      <!-- Live interactive mini-map (hidden at print time) -->
+      <div id="report-map"></div>
+      <!-- Print-only snapshot baked at print time -->
+      <img id="report-print-img" alt="Parcel map" />
       <div id="report-data"></div>
       <div id="report-notes-wrap">
         <label for="report-notes" class="report-section-label">Notes</label>
@@ -86,9 +90,9 @@
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <script src="https://unpkg.com/pmtiles@3.2.0/dist/pmtiles.js"></script>
   <script src="app.js?v=20260614"></script>
-  <script src="envelope.js?v=20260614"></script>
+  <script src="envelope.js?v=20260615"></script>
   <script src="connections.js?v=20260613"></script>
-  <script src="report.js?v=20260614c"></script>
+  <script src="report.js?v=20260615"></script>
   <script src="https://unpkg.com/maplibre-contour@0.0.5/dist/index.min.js"></script>
   <script src="https://unpkg.com/terra-draw/dist/terra-draw.umd.js"></script>
   <script src="https://unpkg.com/terra-draw-maplibre-gl-adapter/dist/terra-draw-maplibre-gl-adapter.umd.js"></script>
