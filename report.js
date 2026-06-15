@@ -1,8 +1,8 @@
 // austingraph.chat — Parcel Report
 // A live interactive MapLibre mini-map embedded in the report popup. When the
 // report opens, it fetches the compute_envelope RPC directly (independent of the
-// main-map envelope timing) so setback / buildable / 3D massing overlays are
-// always reliable. Supports terra-draw annotation, distance measurement, and
+// main-map envelope timing) so the setback and buildable overlays are always
+// reliable. Supports terra-draw annotation, distance measurement, and
 // PDF/print export via canvas snapshot.
 
 (() => {
@@ -123,17 +123,6 @@
       reportMap.addLayer({ id: 'rp-buildable-outline', type: 'line', source: 'rp-buildable',
         paint: { 'line-color': '#4caf7d', 'line-width': 1.5 } });
 
-      // 3D massing extrusion
-      reportMap.addLayer({ id: 'rp-massing', type: 'fill-extrusion', source: 'rp-buildable',
-        layout: { visibility: 'none' },
-        paint: {
-          'fill-extrusion-color': '#4caf7d',
-          'fill-extrusion-opacity': 0.6,
-          'fill-extrusion-height': ['coalesce', ['get', 'height_m'], 6],
-          'fill-extrusion-base': 0,
-        },
-      });
-
       // Measure layers
       reportMap.addSource('rp-measure-pts',  { type: 'geojson', data: EMPTY });
       reportMap.addSource('rp-measure-line', { type: 'geojson', data: EMPTY });
@@ -151,8 +140,8 @@
       initDraw();
       reportMap.on('click', onMeasureClick);
 
-      if (pendingData) { applyData(pendingData); pendingData = null; }
-      syncLayers();
+      mapReady = true;
+      renderReport();
     });
   }
 
@@ -226,19 +215,26 @@
     }
   }
 
-  const checks = { setback: null, buildable: null, massing: null };
+  const checks = { setback: null, buildable: null };
 
   function syncLayers() {
     if (!reportMap) return;
-    const massingOn = !!checks.massing?.checked;
-    setVisible(SETBACK_LAYERS, !!checks.setback?.checked);
-    setVisible(BUILDABLE_LAYERS, !!checks.buildable?.checked && !massingOn);
-    if (reportMap.getLayer('rp-massing'))
-      reportMap.setLayoutProperty('rp-massing', 'visibility', massingOn ? 'visible' : 'none');
+    setVisible(SETBACK_LAYERS,   !!checks.setback?.checked);
+    setVisible(BUILDABLE_LAYERS, !!checks.buildable?.checked);
   }
 
   // ── Apply parcel + envelope data to the map ──────────────────────────────────
-  let pendingData = null;
+  // Latest parcel geometry + envelope; renderReport() applies whatever is current
+  // once the map is ready, so neither the map-load timing nor the async envelope
+  // fetch can drop data (they just update state and call renderReport()).
+  let mapReady = false;
+  const current = { parcelGeom: null, envelope: null };
+
+  function renderReport() {
+    if (!mapReady || !reportMap) return;
+    applyData(current);
+    syncLayers();
+  }
 
   function applyData({ parcelGeom, envelope }) {
     const EMPTY = { type: 'FeatureCollection', features: [] };
@@ -253,14 +249,13 @@
     );
 
     const bl = envelope?.buildable;
-    const hm = envelope?.max_height_ft ? envelope.max_height_ft * 0.3048 : 6;
     reportMap.getSource('rp-buildable')?.setData(
-      bl ? { type: 'FeatureCollection', features: [{ ...bl, properties: { ...(bl.properties || {}), height_m: hm } }] } : EMPTY
+      bl ? { type: 'FeatureCollection', features: [bl] } : EMPTY
     );
 
     if (parcelGeom) {
       const bbox = bboxFromGeometry(parcelGeom);
-      reportMap.fitBounds(bbox, { padding: 80, maxZoom: 19, pitch: checks.massing?.checked ? 50 : 0, bearing: 0, animate: false });
+      reportMap.fitBounds(bbox, { padding: 80, maxZoom: 19, pitch: 0, bearing: 0, animate: false });
     }
   }
 
@@ -282,8 +277,9 @@
     })
       .then((r) => r.json())
       .then((d) => {
-        if (token !== reportEnvToken) return;
-        if (!modal.classList.contains('open')) return;
+        if (token !== reportEnvToken) return;             // superseded by a newer open
+        if (!modal.classList.contains('open')) return;     // report was closed
+        if (current.parcelGeom !== parcelGeom) return;      // a different parcel is now active
 
         const envelope = d?.status === 'ok' ? d : null;
         if (envNoteEl) {
@@ -299,12 +295,8 @@
           }
         }
 
-        if (reportMap?.loaded()) {
-          applyData({ parcelGeom, envelope });
-          syncLayers();
-        } else if (pendingData) {
-          pendingData.envelope = envelope;
-        }
+        current.envelope = envelope;
+        renderReport();
       })
       .catch(() => {
         if (token !== reportEnvToken) return;
@@ -342,9 +334,6 @@
 
     row1.appendChild(layerToggle('Setback', 'setback', true));
     row1.appendChild(layerToggle('Buildable', 'buildable', true));
-    row1.appendChild(layerToggle('3D Massing', 'massing', true, (on) => {
-      if (reportMap) reportMap.easeTo({ pitch: on ? 50 : 0, duration: 600 });
-    }));
 
     const baseLbl = document.createElement('span');
     baseLbl.className = 'report-tool-label';
@@ -557,19 +546,19 @@
     populateData(data);
     buildFooter(data);
 
-    // Apply parcel geometry immediately; envelope arrives via fetchReportEnvelope
+    // Parcel geometry is known now; envelope arrives async via fetchReportEnvelope.
+    // Both just update `current` and call renderReport(), which applies once the
+    // map is ready — so nothing depends on map-load vs. fetch timing.
+    current.parcelGeom = data.geometry;
+    current.envelope = null;
+
     if (!reportMap) {
-      createReportMap();
-      pendingData = { parcelGeom: data.geometry, envelope: null };
-    } else if (reportMap.loaded()) {
-      applyData({ parcelGeom: data.geometry, envelope: null });
+      createReportMap();          // renderReport() fires from its load handler
+    } else {
       reportMap.resize();
       if (draw) draw.clear();
       clearMeasure();
-      syncLayers();
-    } else {
-      pendingData = { parcelGeom: data.geometry, envelope: null };
-      reportMap.resize();
+      renderReport();             // map already ready → draws the parcel immediately
     }
 
     // Fetch the envelope independently — no dependency on main-map timing
