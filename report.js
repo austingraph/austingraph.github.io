@@ -1,28 +1,35 @@
 // austingraph.chat — Parcel Report
-// A live interactive MapLibre mini-map embedded in the report popup. When the
-// report opens, it fetches the compute_envelope RPC directly (independent of the
-// main-map envelope timing) so the setback and buildable overlays are always
-// reliable. Supports terra-draw annotation, distance measurement, and
-// PDF/print export via canvas snapshot.
+// Live MapLibre mini-map in the report popup. Fetches compute_envelope
+// independently so setback/buildable overlays are reliable regardless of
+// main-map timing. Supports terra-draw annotation, distance measurement,
+// and PDF/print export via canvas snapshot.
 
 (() => {
-  const reportBtn  = document.getElementById('panel-report-btn');
-  const modal      = document.getElementById('report-modal');
-  const closeBtn   = document.getElementById('report-close');
-  const toolbar    = document.getElementById('report-toolbar');
-  const mapEl      = document.getElementById('report-map');
-  const printImg   = document.getElementById('report-print-img');
-  const dataEl     = document.getElementById('report-data');
-  const notesEl    = document.getElementById('report-notes');
-  const footerEl   = document.getElementById('report-footer-bar');
-  const titleEl    = document.getElementById('report-title');
+  const reportBtn = document.getElementById('panel-report-btn');
+  const modal     = document.getElementById('report-modal');
+  const closeBtn  = document.getElementById('report-close');
+  const toolbar   = document.getElementById('report-toolbar');
+  const mapEl     = document.getElementById('report-map');
+  const printImg  = document.getElementById('report-print-img');
+  const dataEl    = document.getElementById('report-data');
+  const notesEl   = document.getElementById('report-notes');
+  const footerEl  = document.getElementById('report-footer-bar');
+  const titleEl   = document.getElementById('report-title');
 
-  let reportMap = null;   // MapLibre instance, created lazily and reused
-  let draw = null;        // terra-draw instance
-  let measuring = false;
+  // ── Module state ─────────────────────────────────────────────────────────────
+  let reportMap    = null;   // MapLibre instance, created lazily and reused
+  let sourcesReady = false;  // true once load handler has added sources+layers
+  let pendingGeom  = null;   // parcel geometry waiting to be drawn
+  let pendingEnv   = null;   // envelope data waiting to be drawn (null until fetch)
+  let envToken     = 0;      // stale-fetch guard
+
+  let draw       = null;
+  let measuring  = false;
   let measurePts = [];
 
-  // ── Basemap style ────────────────────────────────────────────────────────────
+  const checks = { setback: null, buildable: null };
+
+  // ── Basemap style ─────────────────────────────────────────────────────────────
   const REPORT_STYLE = {
     version: 8,
     glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
@@ -46,7 +53,7 @@
     ],
   };
 
-  // ── Geometry helpers ─────────────────────────────────────────────────────────
+  // ── Geometry helpers ──────────────────────────────────────────────────────────
   function eachCoord(geometry, fn) {
     (function walk(c) {
       if (typeof c[0] === 'number') { fn(c); return; }
@@ -71,8 +78,8 @@
     return [sx / n, sy / n];
   }
 
-  // ── Formatting ───────────────────────────────────────────────────────────────
-  const FT_PER_M = 3.280839895;
+  // ── Formatting ────────────────────────────────────────────────────────────────
+  const FT_PER_M   = 3.280839895;
   const M2_PER_ACRE = 4046.8564224;
 
   function fmtArea(m2) {
@@ -88,7 +95,56 @@
     return `${Math.round(ft).toLocaleString()} ft`;
   }
 
-  // ── Create the mini-map (once) ───────────────────────────────────────────────
+  // ── Layer visibility ──────────────────────────────────────────────────────────
+  const SETBACK_LAYERS   = ['rp-setback-fill', 'rp-setback-outline'];
+  const BUILDABLE_LAYERS = ['rp-buildable-fill', 'rp-buildable-outline'];
+
+  function setVisible(ids, visible) {
+    for (const id of ids) {
+      if (reportMap?.getLayer(id))
+        reportMap.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
+    }
+  }
+
+  function syncLayers() {
+    if (!sourcesReady || !reportMap) return;
+    setVisible(SETBACK_LAYERS,   !!checks.setback?.checked);
+    setVisible(BUILDABLE_LAYERS, !!checks.buildable?.checked);
+  }
+
+  // ── Apply pending data to the map ─────────────────────────────────────────────
+  // Called from: (1) map load handler, (2) envelope fetch callback.
+  // Both just set pendingGeom/pendingEnv then call applyPending().
+  function applyPending() {
+    if (!sourcesReady || !reportMap) return;
+
+    const EMPTY = { type: 'FeatureCollection', features: [] };
+
+    reportMap.getSource('rp-parcel')?.setData(
+      pendingGeom
+        ? { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: pendingGeom }] }
+        : EMPTY
+    );
+
+    const sz = pendingEnv?.setback_zone;
+    reportMap.getSource('rp-setback')?.setData(
+      sz ? { type: 'FeatureCollection', features: [sz] } : EMPTY
+    );
+
+    const bl = pendingEnv?.buildable;
+    reportMap.getSource('rp-buildable')?.setData(
+      bl ? { type: 'FeatureCollection', features: [bl] } : EMPTY
+    );
+
+    if (pendingGeom) {
+      reportMap.fitBounds(bboxFromGeometry(pendingGeom),
+        { padding: 80, maxZoom: 19, pitch: 0, bearing: 0, animate: false });
+    }
+
+    syncLayers();
+  }
+
+  // ── Create the mini-map (once) ────────────────────────────────────────────────
   function createReportMap() {
     reportMap = new maplibregl.Map({
       container: mapEl,
@@ -98,7 +154,7 @@
       pitch: 0,
       bearing: 0,
     });
-    reportMap.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
+    reportMap.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), 'top-right');
 
     reportMap.on('load', () => {
       const EMPTY = { type: 'FeatureCollection', features: [] };
@@ -117,7 +173,7 @@
       reportMap.addLayer({ id: 'rp-setback-outline', type: 'line', source: 'rp-setback',
         paint: { 'line-color': '#d9534f', 'line-width': 1.2 } });
 
-      // Buildable footprint (flat fill)
+      // Buildable footprint
       reportMap.addLayer({ id: 'rp-buildable-fill', type: 'fill', source: 'rp-buildable',
         paint: { 'fill-color': '#4caf7d', 'fill-opacity': 0.25 } });
       reportMap.addLayer({ id: 'rp-buildable-outline', type: 'line', source: 'rp-buildable',
@@ -140,13 +196,13 @@
       initDraw();
       reportMap.on('click', onMeasureClick);
 
-      mapReady = true;
-      reportMap.resize();   // ensure canvas matches container after modal opens
-      renderReport();
+      sourcesReady = true;
+      reportMap.resize();
+      applyPending();
     });
   }
 
-  // ── Terra-draw annotation ────────────────────────────────────────────────────
+  // ── Terra-draw annotation ─────────────────────────────────────────────────────
   function initDraw() {
     const TD  = window.terraDraw;
     const TDA = window.terraDrawMaplibreGlAdapter;
@@ -165,7 +221,7 @@
     draw.setMode('select');
   }
 
-  // ── Measure ──────────────────────────────────────────────────────────────────
+  // ── Measure ───────────────────────────────────────────────────────────────────
   function haversine(a, b) {
     const R = 6378137, toRad = (x) => x * Math.PI / 180;
     const dLat = toRad(b[1] - a[1]), dLng = toRad(b[0] - a[0]);
@@ -205,66 +261,9 @@
     redrawMeasure();
   }
 
-  // ── Layer visibility helpers ─────────────────────────────────────────────────
-  const SETBACK_LAYERS   = ['rp-setback-fill', 'rp-setback-outline'];
-  const BUILDABLE_LAYERS = ['rp-buildable-fill', 'rp-buildable-outline'];
-
-  function setVisible(ids, visible) {
-    for (const id of ids) {
-      if (reportMap?.getLayer(id))
-        reportMap.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
-    }
-  }
-
-  const checks = { setback: null, buildable: null };
-
-  function syncLayers() {
-    if (!reportMap) return;
-    setVisible(SETBACK_LAYERS,   !!checks.setback?.checked);
-    setVisible(BUILDABLE_LAYERS, !!checks.buildable?.checked);
-  }
-
-  // ── Apply parcel + envelope data to the map ──────────────────────────────────
-  // Latest parcel geometry + envelope; renderReport() applies whatever is current
-  // once the map is ready, so neither the map-load timing nor the async envelope
-  // fetch can drop data (they just update state and call renderReport()).
-  let mapReady = false;
-  const current = { parcelGeom: null, envelope: null };
-
-  function renderReport() {
-    if (!mapReady || !reportMap) return;
-    applyData(current);
-    syncLayers();
-  }
-
-  function applyData({ parcelGeom, envelope }) {
-    const EMPTY = { type: 'FeatureCollection', features: [] };
-
-    reportMap.getSource('rp-parcel')?.setData(
-      parcelGeom ? { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: parcelGeom }] } : EMPTY
-    );
-
-    const sz = envelope?.setback_zone;
-    reportMap.getSource('rp-setback')?.setData(
-      sz ? { type: 'FeatureCollection', features: [sz] } : EMPTY
-    );
-
-    const bl = envelope?.buildable;
-    reportMap.getSource('rp-buildable')?.setData(
-      bl ? { type: 'FeatureCollection', features: [bl] } : EMPTY
-    );
-
-    if (parcelGeom) {
-      const bbox = bboxFromGeometry(parcelGeom);
-      reportMap.fitBounds(bbox, { padding: 80, maxZoom: 19, pitch: 0, bearing: 0, animate: false });
-    }
-  }
-
-  // ── Self-fetch envelope for the report ───────────────────────────────────────
-  let reportEnvToken = 0;
-
-  function fetchReportEnvelope(parcelId, parcelGeom) {
-    const token = ++reportEnvToken;
+  // ── Fetch envelope for the report ─────────────────────────────────────────────
+  function fetchEnvelope(parcelId, envNoteEl) {
+    const token = ++envToken;
     if (envNoteEl) envNoteEl.textContent = 'Loading development envelope…';
 
     fetch(`${window.AG.SUPABASE_URL}/rest/v1/rpc/compute_envelope`, {
@@ -278,13 +277,13 @@
     })
       .then((r) => r.json())
       .then((d) => {
-        if (token !== reportEnvToken) return;             // superseded by a newer open
-        if (!modal.classList.contains('open')) return;     // report was closed
-        if (current.parcelGeom !== parcelGeom) return;      // a different parcel is now active
+        if (token !== envToken) return;
+        if (!modal.classList.contains('open')) return;
 
-        const envelope = d?.status === 'ok' ? d : null;
+        pendingEnv = d?.status === 'ok' ? d : null;
+
         if (envNoteEl) {
-          if (envelope) {
+          if (pendingEnv) {
             envNoteEl.textContent = '';
           } else {
             const msgs = {
@@ -296,18 +295,15 @@
           }
         }
 
-        current.envelope = envelope;
-        renderReport();
+        applyPending();
       })
       .catch(() => {
-        if (token !== reportEnvToken) return;
+        if (token !== envToken) return;
         if (envNoteEl) envNoteEl.textContent = 'Could not fetch development envelope.';
       });
   }
 
-  // ── Toolbar ──────────────────────────────────────────────────────────────────
-  let envNoteEl = null;
-
+  // ── Toolbar ───────────────────────────────────────────────────────────────────
   function buildToolbar() {
     toolbar.innerHTML = '';
 
@@ -319,22 +315,22 @@
     layerLbl.textContent = 'Layers:';
     row1.appendChild(layerLbl);
 
-    function layerToggle(text, key, defaultOn, onChange) {
+    function layerToggle(text, key) {
       const lbl = document.createElement('label');
       lbl.className = 'report-layer-check';
       const cb = document.createElement('input');
       cb.type = 'checkbox';
-      cb.checked = defaultOn;
+      cb.checked = true;
       checks[key] = cb;
-      cb.addEventListener('change', () => { syncLayers(); if (onChange) onChange(cb.checked); });
+      cb.addEventListener('change', syncLayers);
       const sp = document.createElement('span');
       sp.textContent = text;
       lbl.appendChild(cb); lbl.appendChild(sp);
       return lbl;
     }
 
-    row1.appendChild(layerToggle('Setback', 'setback', true));
-    row1.appendChild(layerToggle('Buildable', 'buildable', true));
+    row1.appendChild(layerToggle('Setback',   'setback'));
+    row1.appendChild(layerToggle('Buildable', 'buildable'));
 
     const baseLbl = document.createElement('span');
     baseLbl.className = 'report-tool-label';
@@ -364,7 +360,7 @@
     row1.appendChild(aerialBtn); row1.appendChild(streetBtn);
     toolbar.appendChild(row1);
 
-    // Row 2: annotation + print
+    // Row 2: annotation tools + print
     const row2 = document.createElement('div');
     row2.className = 'report-tb-row';
 
@@ -374,11 +370,11 @@
     row2.appendChild(annotLbl);
 
     const modes = [
-      { label: '↖ Select',   mode: 'select' },
+      { label: '↖ Select',    mode: 'select' },
       { label: '✏️ Freehand', mode: 'freehand' },
-      { label: '📏 Line',    mode: 'linestring' },
-      { label: '⬡ Area',    mode: 'polygon' },
-      { label: '📌 Marker',  mode: 'point' },
+      { label: '📏 Line',     mode: 'linestring' },
+      { label: '⬡ Area',     mode: 'polygon' },
+      { label: '📌 Marker',   mode: 'point' },
     ];
     const modeBtns = {};
     modes.forEach(({ label, mode }) => {
@@ -387,7 +383,7 @@
       if (mode === 'select') btn.classList.add('active');
       btn.addEventListener('click', () => {
         measuring = false;
-        reportMap.getCanvas().style.cursor = '';
+        reportMap?.getCanvas().style.cursor === '' || (reportMap.getCanvas().style.cursor = '');
         measureBtn.classList.remove('active');
         if (draw) draw.setMode(mode);
         Object.values(modeBtns).forEach((b) => b.classList.remove('active'));
@@ -402,7 +398,7 @@
     measureBtn.addEventListener('click', () => {
       measuring = !measuring;
       measureBtn.classList.toggle('active', measuring);
-      reportMap.getCanvas().style.cursor = measuring ? 'crosshair' : '';
+      if (reportMap) reportMap.getCanvas().style.cursor = measuring ? 'crosshair' : '';
       if (measuring && draw) {
         draw.setMode('select');
         Object.values(modeBtns).forEach((b) => b.classList.remove('active'));
@@ -441,7 +437,7 @@
         try {
           printImg.src = reportMap.getCanvas().toDataURL('image/jpeg', 0.92);
           printImg.onload = () => window.print();
-        } catch (e) {
+        } catch {
           window.print();
         }
       });
@@ -450,14 +446,14 @@
     row2.appendChild(printBtn);
     toolbar.appendChild(row2);
 
-    envNoteEl = document.createElement('p');
+    const envNoteEl = document.createElement('p');
     envNoteEl.className = 'report-env-note';
     toolbar.appendChild(envNoteEl);
 
-    syncLayers();
+    return envNoteEl;
   }
 
-  // ── Data summary ─────────────────────────────────────────────────────────────
+  // ── Data summary ──────────────────────────────────────────────────────────────
   function el(id) {
     const n = document.getElementById(id);
     return (n && n.textContent.trim()) || '—';
@@ -493,10 +489,10 @@
       ['Geo ID',     el('meta-geoid')],
     ]));
     dataEl.appendChild(makeSection('Dimensions', [
-      ['Area',       fmtArea(s.areaM2)],
-      ['Perimeter',  fmtFeet(s.perimM)],
-      ['Width',      fmtFeet(s.widthM)],
-      ['Height',     fmtFeet(s.heightM)],
+      ['Area',      fmtArea(s.areaM2)],
+      ['Perimeter', fmtFeet(s.perimM)],
+      ['Width',     fmtFeet(s.widthM)],
+      ['Height',    fmtFeet(s.heightM)],
     ]));
     dataEl.appendChild(makeSection('Development potential', [
       ['Zoning',         el('env-zoning')],
@@ -509,8 +505,8 @@
     ]));
     const casesEl   = document.getElementById('conn-cases');
     const permitsEl = document.getElementById('conn-permits');
-    const firstCase   = casesEl?.querySelector('.conn-title')?.textContent || '—';
-    const caseStatus  = casesEl?.querySelector('.conn-badge')?.textContent  || '';
+    const firstCase  = casesEl?.querySelector('.conn-title')?.textContent || '—';
+    const caseStatus = casesEl?.querySelector('.conn-badge')?.textContent  || '';
     const permitCount = permitsEl?.querySelectorAll('.conn-item').length ?? 0;
     dataEl.appendChild(makeSection('Civic connections', [
       ['Latest case',  firstCase + (caseStatus ? ` (${caseStatus})` : '')],
@@ -528,7 +524,7 @@
       `<span><a href="${tcadUrl}" target="_blank" rel="noopener" style="color:#b8860b">TCAD record →</a></span>`;
   }
 
-  // ── Open / close ─────────────────────────────────────────────────────────────
+  // ── Open / close ──────────────────────────────────────────────────────────────
   function openReport() {
     const data = window.AG?.lastPanelData;
     if (!data) return;
@@ -543,27 +539,24 @@
     modal.classList.add('open');
     modal.setAttribute('aria-hidden', 'false');
 
-    buildToolbar();
+    const envNoteEl = buildToolbar();
     populateData(data);
     buildFooter(data);
 
-    // Parcel geometry is known now; envelope arrives async via fetchReportEnvelope.
-    // Both just update `current` and call renderReport(), which applies once the
-    // map is ready — so nothing depends on map-load vs. fetch timing.
-    current.parcelGeom = data.geometry;
-    current.envelope = null;
+    pendingGeom = data.geometry;
+    pendingEnv  = null;
 
     if (!reportMap) {
-      requestAnimationFrame(() => createReportMap()); // let CSS layout apply before MapLibre reads container size
+      // Double rAF: first frame commits display:flex layout; second reads correct dimensions.
+      requestAnimationFrame(() => requestAnimationFrame(() => createReportMap()));
     } else {
       reportMap.resize();
       if (draw) draw.clear();
       clearMeasure();
-      renderReport();             // map already ready → draws the parcel immediately
+      applyPending();
     }
 
-    // Fetch the envelope independently — no dependency on main-map timing
-    fetchReportEnvelope(data.parcelId, data.geometry);
+    fetchEnvelope(data.parcelId, envNoteEl);
   }
 
   function closeReport() {

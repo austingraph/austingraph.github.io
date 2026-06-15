@@ -595,17 +595,3 @@ body {
   #report-map { display: none !important; }
   #report-print-img { display: block !important; break-inside: avoid; }
 }
-
-/* draw/measure button styles (kept for future panel integration) */
-.draw-tb-btn {
-  background: rgba(255,255,255,0.1);
-  border: 1px solid rgba(255,255,255,0.25);
-  border-radius: 4px;
-  padding: 4px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #e8e8ea;
-  cursor: pointer;
-}
-.draw-tb-btn:hover { background: rgba(255,255,255,0.18); }
-.draw-tb-btn.active { background: #2d7a1a; color: #fff; border-color: #2d7a1a; }
