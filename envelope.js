@@ -85,6 +85,8 @@
       };
       resetFields(messages[d?.status] || 'Could not compute envelope.');
       if (d?.zoning_ztype) elZoning.textContent = d.zoning_ztype;
+      window.AG.lastEnvelope = null;
+      window.dispatchEvent(new CustomEvent('envelope:ready', { detail: { envelope: null } }));
       return;
     }
 
@@ -118,6 +120,7 @@
     );
 
     window.AG.lastEnvelope = d;
+    window.dispatchEvent(new CustomEvent('envelope:ready', { detail: { envelope: d } }));
 
     const target = d.buildable || d.setback_zone;
     if (target) {

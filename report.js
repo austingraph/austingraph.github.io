@@ -157,6 +157,7 @@
 
       // If open() was called before the map finished loading, apply data now
       if (pendingData) { applyData(pendingData); pendingData = null; }
+      syncLayers();
     });
   }
 
@@ -230,6 +231,19 @@
     }
   }
 
+  // Layer-toggle checkboxes (refs kept so syncLayers is the single source of truth)
+  const checks = { setback: null, buildable: null, massing: null };
+
+  function syncLayers() {
+    if (!reportMap) return;
+    const massingOn = !!checks.massing?.checked;
+    setVisible(SETBACK_LAYERS, !!checks.setback?.checked);
+    // Massing extrusion replaces the flat buildable fill when on
+    setVisible(BUILDABLE_LAYERS, !!checks.buildable?.checked && !massingOn);
+    if (reportMap.getLayer('rp-massing'))
+      reportMap.setLayoutProperty('rp-massing', 'visibility', massingOn ? 'visible' : 'none');
+  }
+
   // ── Apply parcel data to the map ─────────────────────────────────────────────
   let pendingData = null;
 
@@ -256,7 +270,7 @@
   }
 
   // ── Toolbar ──────────────────────────────────────────────────────────────────
-  function buildToolbar(hasEnvelope) {
+  function buildToolbar() {
     toolbar.innerHTML = '';
 
     // Row 1: layer toggles
@@ -268,35 +282,27 @@
     layerLbl.textContent = 'Layers:';
     row1.appendChild(layerLbl);
 
-    function layerToggle(text, ids, defaultOn, onClick) {
+    // A layer checkbox is always clickable; it just drives visibility via syncLayers().
+    // If the envelope geometry hasn't arrived yet, toggling shows an (empty) layer until
+    // the 'envelope:ready' event lands the data — no disabled/gated state.
+    function layerToggle(text, key, defaultOn, onChange) {
       const lbl = document.createElement('label');
       lbl.className = 'report-layer-check';
       const cb = document.createElement('input');
       cb.type = 'checkbox';
-      cb.checked = defaultOn && hasEnvelope;
-      cb.disabled = !hasEnvelope && ids !== null;
-      if (ids) {
-        cb.addEventListener('change', () => {
-          setVisible(ids, cb.checked);
-          if (onClick) onClick(cb.checked);
-        });
-        setVisible(ids, defaultOn && hasEnvelope);
-      }
-      if (onClick && hasEnvelope) cb.addEventListener('change', () => onClick(cb.checked));
+      cb.checked = defaultOn;
+      checks[key] = cb;
+      cb.addEventListener('change', () => { syncLayers(); if (onChange) onChange(cb.checked); });
       const sp = document.createElement('span');
       sp.textContent = text;
       lbl.appendChild(cb); lbl.appendChild(sp);
       return lbl;
     }
 
-    row1.appendChild(layerToggle('Setback', SETBACK_LAYERS, true));
-    row1.appendChild(layerToggle('Buildable', BUILDABLE_LAYERS, true));
-    row1.appendChild(layerToggle('3D Massing', null, false, (on) => {
-      if (!reportMap) return;
-      if (reportMap.getLayer('rp-massing'))
-        reportMap.setLayoutProperty('rp-massing', 'visibility', on ? 'visible' : 'none');
-      setVisible(BUILDABLE_LAYERS, !on);
-      reportMap.easeTo({ pitch: on ? 50 : 0, duration: 600 });
+    row1.appendChild(layerToggle('Setback', 'setback', true));
+    row1.appendChild(layerToggle('Buildable', 'buildable', true));
+    row1.appendChild(layerToggle('3D Massing', 'massing', false, (on) => {
+      if (reportMap) reportMap.easeTo({ pitch: on ? 50 : 0, duration: 600 });
     }));
 
     // Basemap toggle
@@ -415,12 +421,22 @@
     row2.appendChild(printBtn);
     toolbar.appendChild(row2);
 
-    if (!hasEnvelope) {
-      const note = document.createElement('p');
-      note.className = 'report-env-note';
-      note.textContent = 'Setback, Buildable, and Massing layers will appear once the development envelope finishes computing.';
-      toolbar.appendChild(note);
-    }
+    // Note shown until the development envelope is available (cleared on 'envelope:ready')
+    envNoteEl = document.createElement('p');
+    envNoteEl.className = 'report-env-note';
+    toolbar.appendChild(envNoteEl);
+    updateEnvNote();
+
+    // Apply current checkbox state to the layers (no-op if the map isn't loaded yet)
+    syncLayers();
+  }
+
+  let envNoteEl = null;
+  function updateEnvNote() {
+    if (!envNoteEl) return;
+    envNoteEl.textContent = window.AG?.lastEnvelope
+      ? ''
+      : 'Setback, Buildable, and Massing layers will appear once the development envelope finishes computing.';
   }
 
   // ── Data summary ─────────────────────────────────────────────────────────────
@@ -500,7 +516,6 @@
     if (!data) return;
 
     const envelope = window.AG?.lastEnvelope || null;
-    const hasEnvelope = !!envelope;
 
     titleEl.textContent = `Parcel Report — ${data.parcelId}`;
     notesEl.value = '';
@@ -512,7 +527,7 @@
     modal.classList.add('open');
     modal.setAttribute('aria-hidden', 'false');
 
-    buildToolbar(hasEnvelope);
+    buildToolbar();
     populateData(data);
     buildFooter(data);
 
@@ -524,6 +539,7 @@
       reportMap.resize();
       if (draw) { draw.clear(); }
       clearMeasure();
+      syncLayers();
     } else {
       pendingData = { parcelGeom: data.geometry, envelope };
       reportMap.resize();
@@ -544,19 +560,15 @@
     if (e.key === 'Escape' && modal.classList.contains('open')) closeReport();
   });
 
-  // If the envelope arrives after the report is already open, refresh layers + toolbar
-  window.addEventListener('parcel:select', () => {
+  // The envelope often finishes computing AFTER the report is opened. When it lands,
+  // refresh the report sources so the setback/buildable/massing geometry appears, and
+  // re-sync layer visibility to the current checkbox state.
+  window.addEventListener('envelope:ready', (e) => {
+    updateEnvNote();
     if (!modal.classList.contains('open')) return;
-    // Poll briefly for lastEnvelope (it arrives a few seconds after parcel:select)
-    const tid = setInterval(() => {
-      const env = window.AG?.lastEnvelope;
-      if (!env) return;
-      clearInterval(tid);
-      const data = window.AG?.lastPanelData;
-      if (!data || !reportMap?.loaded()) return;
-      applyData({ parcelGeom: data.geometry, envelope: env });
-      buildToolbar(true);
-    }, 500);
-    setTimeout(() => clearInterval(tid), 15000); // give up after 15s
+    const data = window.AG?.lastPanelData;
+    if (!data || !reportMap?.loaded()) return;
+    applyData({ parcelGeom: data.geometry, envelope: e.detail?.envelope || null });
+    syncLayers();
   });
 })();
