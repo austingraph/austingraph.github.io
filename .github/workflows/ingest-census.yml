@@ -1,0 +1,39 @@
+name: Census ingest
+
+# One-off backfill of Census demographics (block groups + blocks) into Supabase.
+# Run manually from the Actions tab — there is no schedule because ACS data only
+# refreshes once a year. Lets the load run in the cloud so secrets never need to
+# be typed on a local/public device.
+#
+# Prerequisites before running:
+#   - Repo secrets DATABASE_URL and CENSUS_API_KEY are set.
+#   - scripts/census_schema.sql has been run in Supabase (creates target tables).
+# After running: run scripts/parcel_demographics.sql in Supabase.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ingest-census
+  cancel-in-progress: false
+
+jobs:
+  ingest-census:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      CENSUS_API_KEY: ${{ secrets.CENSUS_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r scripts/ingest/requirements.txt
+
+      - name: Ingest census data
+        working-directory: scripts/ingest
+        run: python ingest_census.py
