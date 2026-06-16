@@ -217,7 +217,11 @@ def load_block_groups(conn):
         except (TypeError, ValueError):
             pass
 
-        geom_wkt = row.geometry.wkt
+        geom = row.geometry
+        if geom.geom_type == "Polygon":
+            from shapely.geometry import MultiPolygon
+            geom = MultiPolygon([geom])
+        geom_wkt = geom.wkt
 
         records.append((
             geoid,
