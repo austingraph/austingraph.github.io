@@ -28,20 +28,14 @@ declare
   v_cost_b numeric;
   v_total  integer;
 begin
-  -- Fetch parcel geometry
-  select geom into v_geom from parcels where parcel_id = p_parcel_id;
+  -- Fetch parcel geometry + precomputed zoning base (same source as compute_envelope)
+  select geom, zoning_base into v_geom, v_zbase
+  from parcels where parcel_id = p_parcel_id;
   if not found then
     return jsonb_build_object('status', 'not_found', 'parcel_id', p_parcel_id);
   end if;
 
   v_ctr := st_centroid(v_geom);
-
-  -- Determine zoning base (same lookup as compute_envelope)
-  select base_dist into v_zbase
-  from zoning
-  where st_within(v_ctr, geom)
-  order by st_area(geom) asc
-  limit 1;
 
   -- Map zoning → lens
   v_lens := case
@@ -91,8 +85,6 @@ begin
     -- Block-level headcounts (2020 Decennial)
     'total_pop',          v_blk.total_pop,
     'housing_units',      v_blk.housing_units,
-    'occupied_units',     v_blk.occupied_units,
-    'vacant_units',       v_blk.vacant_units,
     -- Block-group ACS: housing tenure
     'owner_occ',          v_bg.owner_occ,
     'renter_occ',         v_bg.renter_occ,

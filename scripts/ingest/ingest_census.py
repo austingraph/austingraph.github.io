@@ -391,8 +391,6 @@ def load_blocks(conn):
             f"SRID=4326;{shp.wkt}",
             total_pop,
             housing_units,
-            None,          # occupied_units (not in DHC P1/H1 at block level)
-            None,          # vacant_units
             pop_white,
             pop_black,
             pop_hisp,
@@ -404,7 +402,6 @@ def load_blocks(conn):
         execute_values(cur, """
             insert into census_blocks (
               geoid, geom, total_pop, housing_units,
-              occupied_units, vacant_units,
               pop_white, pop_black, pop_hisp, pop_asian
             )
             values %s
@@ -412,8 +409,6 @@ def load_blocks(conn):
               geom           = excluded.geom,
               total_pop      = excluded.total_pop,
               housing_units  = excluded.housing_units,
-              occupied_units = excluded.occupied_units,
-              vacant_units   = excluded.vacant_units,
               pop_white      = excluded.pop_white,
               pop_black      = excluded.pop_black,
               pop_hisp       = excluded.pop_hisp,
