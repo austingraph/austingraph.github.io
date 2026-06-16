@@ -46,6 +46,19 @@ def census_get(url, params=None):
     headers = rows[0]
     return [dict(zip(headers, row)) for row in rows[1:]]
 
+def census_get_chunked(url, var_list, geo_params, chunk_size=49):
+    """Fetch >50 variables across multiple <=50-var requests (Census API limit)
+    and merge the returned rows by their geography columns."""
+    merged = {}
+    for i in range(0, len(var_list), chunk_size):
+        chunk = var_list[i:i + chunk_size]
+        rows = census_get(url, params={"get": ",".join(chunk), **geo_params})
+        for r in rows:
+            geo_cols = [k for k in r if k not in chunk]
+            key = tuple(r[c] for c in geo_cols)
+            merged.setdefault(key, {}).update(r)
+    return list(merged.values())
+
 def nullify(val, sentinel=-666666666):
     """Census API returns -666666666 for missing/suppressed values."""
     try:
@@ -86,7 +99,7 @@ def load_block_groups(conn):
     print(f"  {len(gdf)} block groups in Travis County")
 
     # --- ACS variables ---
-    acs_vars = ",".join([
+    acs_var_list = [
         "B19013_001E",          # median HH income
         "B25003_002E",          # owner-occupied
         "B25003_003E",          # renter-occupied
@@ -123,12 +136,12 @@ def load_block_groups(conn):
         "B08301_018E",          # bicycle
         "B08301_019E",          # walked
         "B08301_021E",          # worked at home
-    ])
+    ]
 
-    rows = census_get(
+    rows = census_get_chunked(
         f"https://api.census.gov/data/{ACS_VINTAGE}/acs/acs5",
-        params={
-            "get": acs_vars,
+        acs_var_list,
+        {
             "for": "block group:*",
             "in": f"state:{STATE} county:{COUNTY}",
             "key": CENSUS_KEY,
