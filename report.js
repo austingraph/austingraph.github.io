@@ -25,6 +25,7 @@
   let draw       = null;
   let measuring  = false;
   let measurePts = [];
+  let demoCtr    = 0;        // stale-fetch guard for demographics
 
   // ── Basemap style ─────────────────────────────────────────────────────────────
   const REPORT_STYLE = {
@@ -406,6 +407,110 @@
       `<span><a href="${tcadUrl}" target="_blank" rel="noopener" style="color:#b8860b">TCAD record →</a></span>`;
   }
 
+  // ── Demographics (zoning-contextual) ─────────────────────────────────────────
+  function fetchDemographics(parcelId, token) {
+    const noteEl = document.createElement('p');
+    noteEl.className = 'report-env-note';
+    noteEl.textContent = 'Loading neighborhood profile…';
+    dataEl.appendChild(noteEl);
+
+    fetch(`${window.AG.SUPABASE_URL}/rest/v1/rpc/parcel_demographics`, {
+      method: 'POST',
+      headers: {
+        apikey: window.AG.SUPABASE_KEY,
+        Authorization: `Bearer ${window.AG.SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ p_parcel_id: parcelId }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (token !== demoCtr) return;
+        if (!modal.classList.contains('open')) return;
+        noteEl.remove();
+        if (d?.status === 'ok') {
+          dataEl.appendChild(buildDemographicsSection(d));
+        } else if (d?.status === 'no_census') {
+          const msg = document.createElement('p');
+          msg.className = 'report-env-note';
+          msg.textContent = 'Census data not available for this parcel (outside City limits or county parcel).';
+          dataEl.appendChild(msg);
+        }
+      })
+      .catch(() => {
+        if (token !== demoCtr) return;
+        noteEl.remove();
+      });
+  }
+
+  function fmt$(n)  { return n != null ? `$${Number(n).toLocaleString()}` : '—'; }
+  function fmtPct(n){ return n != null ? `${n}%` : '—'; }
+  function fmtN(n)  { return n != null ? Number(n).toLocaleString() : '—'; }
+
+  function buildDemographicsSection(p) {
+    const lensConfig = {
+      residential: {
+        title: 'Neighborhood profile',
+        rows: [
+          ['Population (block)',  fmtN(p.total_pop)],
+          ['Housing units',       fmtN(p.housing_units)],
+          ['Owner occupied',      fmtPct(p.owner_pct)],
+          ['Renter occupied',     fmtPct(p.renter_pct)],
+          ['Median income',       fmt$(p.median_hh_income)],
+          ['Median age',          p.median_age != null ? `${p.median_age} yrs` : '—'],
+          ['Youth (<18)',         fmtPct(p.youth_pct)],
+          ['Seniors (65+)',       fmtPct(p.senior_pct)],
+          ['Hispanic/Latino',     fmtPct(p.hispanic_pct)],
+          ['Black/African Am.',   fmtPct(p.black_pct)],
+          ['White (non-Hisp.)',   fmtPct(p.white_pct)],
+          ['Data source',         `ACS ${p.acs_vintage} 5-yr`],
+        ],
+      },
+      rental: {
+        title: 'Renter market profile',
+        rows: [
+          ['Renter share',        fmtPct(p.renter_pct)],
+          ['Median gross rent',   p.median_gross_rent != null ? `${fmt$(p.median_gross_rent)}/mo` : '—'],
+          ['Cost burdened (30%+)',fmtPct(p.cost_burden_pct)],
+          ['Median income',       fmt$(p.median_hh_income)],
+          ['Median age',          p.median_age != null ? `${p.median_age} yrs` : '—'],
+          ['Prime-age (25–64)',   fmtPct(p.prime_pct)],
+          ['Vacancy rate',        p.occupied_units != null && p.housing_units
+            ? fmtPct(Math.round(100 - 100 * p.occupied_units / p.housing_units)) : '—'],
+          ['Population (block)',  fmtN(p.total_pop)],
+          ['Data source',         `ACS ${p.acs_vintage} 5-yr`],
+        ],
+      },
+      commercial: {
+        title: 'Trade area profile',
+        rows: [
+          ['Population (block)',  fmtN(p.total_pop)],
+          ['Median income',       fmt$(p.median_hh_income)],
+          ['Prime consumers (25–64)', fmtPct(p.prime_pct)],
+          ['Owner share',         fmtPct(p.owner_pct)],
+          ['Transit / walk / bike', fmtPct(p.transit_pct)],
+          ['Hispanic/Latino',     fmtPct(p.hispanic_pct)],
+          ['Data source',         `ACS ${p.acs_vintage} 5-yr`],
+        ],
+      },
+      workforce: {
+        title: 'Workforce context',
+        rows: [
+          ['Population (block)',  fmtN(p.total_pop)],
+          ['Median income',       fmt$(p.median_hh_income)],
+          ['Transit commuters',   fmtPct(p.transit_pct)],
+          ['Owner / renter split', p.owner_pct != null
+            ? `${p.owner_pct}% / ${p.renter_pct}%` : '—'],
+          ['Median age',          p.median_age != null ? `${p.median_age} yrs` : '—'],
+          ['Data source',         `ACS ${p.acs_vintage} 5-yr`],
+        ],
+      },
+    };
+
+    const cfg = lensConfig[p.lens] || lensConfig.residential;
+    return makeSection(cfg.title, cfg.rows);
+  }
+
   // ── Open / close ──────────────────────────────────────────────────────────────
   function openReport() {
     const data = window.AG?.lastPanelData;
@@ -424,6 +529,9 @@
     buildToolbar();
     populateData(data);
     buildFooter(data);
+
+    const demoToken = ++demoCtr;
+    fetchDemographics(data.parcelId, demoToken);
 
     pendingGeom = data.geometry;
 
