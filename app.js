@@ -55,6 +55,7 @@ function haversine([lon1, lat1], [lon2, lat2]) {
 }
 
 function geometryStats(geometry) {
+  if (!geometry) return { areaM2: 0, perimM: 0, widthM: 0, heightM: 0 };
   // Normalize Polygon/MultiPolygon into a list of polygons
   const polys = geometry.type === 'Polygon' ? [geometry.coordinates]
               : geometry.type === 'MultiPolygon' ? geometry.coordinates
@@ -127,9 +128,9 @@ function openPanel(parcelId, geometry) {
   window.AG.lastPanelData = { parcelId, geometry, stats: s };
   const reportBtn = document.getElementById('panel-report-btn');
   if (reportBtn) reportBtn.style.display = '';
-  elArea.textContent   = fmtArea(s.areaM2);
-  elPerim.textContent  = fmtFeet(s.perimM);
-  elExtent.textContent = `${fmtFeet(s.widthM)} × ${fmtFeet(s.heightM)}`;
+  elArea.textContent   = geometry ? fmtArea(s.areaM2)  : '—';
+  elPerim.textContent  = geometry ? fmtFeet(s.perimM)  : '—';
+  elExtent.textContent = geometry ? `${fmtFeet(s.widthM)} × ${fmtFeet(s.heightM)}` : '—';
 
   // Reset metadata fields, then fetch from Supabase
   elAddr.textContent = elLegal.textContent = elAcres.textContent = elGeoId.textContent = '—';
@@ -189,6 +190,41 @@ function clearSelection() {
     window.dispatchEvent(new CustomEvent('parcel:deselect', { detail: { parcel_id } }));
   }
 }
+
+// Programmatic parcel selection by TCAD parcel_id (used by address search).
+// Fetches geometry from Supabase, opens the panel, and fires parcel:select.
+async function selectParcelById(parcel_id) {
+  clearSelection();
+  closePanel();
+  selectedParcelPropId = parcel_id;
+
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/rpc/parcel_geojson`,
+      {
+        method: 'POST',
+        headers: {
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ p_parcel_id: parcel_id }),
+      }
+    );
+    const geom = await res.json();
+    if (geom && geom.type) {
+      openPanel(parcel_id, geom);
+    } else {
+      // Open panel without geometry stats if RPC unavailable
+      openPanel(parcel_id, null);
+    }
+  } catch (_) {
+    openPanel(parcel_id, null);
+  }
+
+  window.dispatchEvent(new CustomEvent('parcel:select', { detail: { parcel_id } }));
+}
+window.AG.selectParcelById = selectParcelById;
 
 // ── Map layers & interaction ─────────────────────────────────────────────────
 map.on('load', () => {
