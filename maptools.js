@@ -261,21 +261,6 @@
               }, beforeLayer);
             }
 
-            // Fit map to show the overlay on first enable
-            var minLon=Infinity, maxLon=-Infinity, minLat=Infinity, maxLat=-Infinity;
-            data.features.forEach(function(f) {
-              var walk = function(c) {
-                if (typeof c[0]==='number') {
-                  if (c[0]<minLon) minLon=c[0]; if (c[0]>maxLon) maxLon=c[0];
-                  if (c[1]<minLat) minLat=c[1]; if (c[1]>maxLat) maxLat=c[1];
-                } else { c.forEach(walk); }
-              };
-              if (f.geometry) walk(f.geometry.coordinates);
-            });
-            if (minLon!==Infinity) {
-              map.fitBounds([[minLon,minLat],[maxLon,maxLat]], { padding: 40, duration: 800, maxZoom: 14 });
-            }
-
             loaded = true;
           } catch (e) {
             console.error("Overlay load error:", sourceId, e);
