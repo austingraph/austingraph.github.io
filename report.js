@@ -378,6 +378,7 @@
       ['Height',    fmtFeet(s.heightM)],
     ]));
     dataEl.appendChild(makeSection('Development potential', [
+      ['Capacity',       el('env-capacity')],
       ['Zoning',         el('env-zoning')],
       ['Setbacks',       el('env-setbacks')],
       ['Buildable ft²',  el('env-buildable')],
