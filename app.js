@@ -128,6 +128,8 @@ function openPanel(parcelId, geometry) {
   window.AG.lastPanelData = { parcelId, geometry, stats: s };
   const reportBtn = document.getElementById('panel-report-btn');
   if (reportBtn) reportBtn.style.display = '';
+  const centerBtn = document.getElementById('panel-center-btn');
+  if (centerBtn) centerBtn.style.display = '';
   elArea.textContent   = geometry ? fmtArea(s.areaM2)  : '—';
   elPerim.textContent  = geometry ? fmtFeet(s.perimM)  : '—';
   elExtent.textContent = geometry ? `${fmtFeet(s.widthM)} × ${fmtFeet(s.heightM)}` : '—';
@@ -168,12 +170,26 @@ function closePanel() {
   panel.setAttribute('aria-hidden', 'true');
   const reportBtn = document.getElementById('panel-report-btn');
   if (reportBtn) reportBtn.style.display = 'none';
+  const centerBtn = document.getElementById('panel-center-btn');
+  if (centerBtn) centerBtn.style.display = 'none';
   window.AG.lastPanelData = null;
 }
 
 document.getElementById('panel-close').addEventListener('click', () => {
   clearSelection();
   closePanel();
+});
+
+document.getElementById('panel-center-btn').addEventListener('click', () => {
+  const data = window.AG.lastPanelData;
+  if (!data) return;
+  if (data.geometry) {
+    map.fitBounds(bboxOfGeometry(data.geometry),
+      { padding: 80, maxZoom: 18, pitch: 0, bearing: 0, duration: 900 });
+  } else {
+    window.dispatchEvent(new CustomEvent('parcel:select',
+      { detail: { parcel_id: data.parcelId } }));
+  }
 });
 
 function clearSelection() {
