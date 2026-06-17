@@ -431,16 +431,30 @@
         noteEl.remove();
         if (d?.status === 'ok') {
           dataEl.appendChild(buildDemographicsSection(d));
+          // Feasibility section uses median rent from demographics
+          appendFeasibility(parcelId, d);
         } else if (d?.status === 'no_census') {
           const msg = document.createElement('p');
           msg.className = 'report-env-note';
           msg.textContent = 'Census data not available for this parcel (outside City limits or county parcel).';
           dataEl.appendChild(msg);
+          appendFeasibility(parcelId, null);
         }
       })
       .catch(() => {
         if (token !== demoCtr) return;
         noteEl.remove();
+        appendFeasibility(parcelId, null);
+      });
+  }
+
+  function appendFeasibility(parcelId, demographics) {
+    if (typeof window.AG.buildFeasibilitySection !== 'function') return;
+    const envelope = window.AG.lastEnvelope;
+    window.AG.buildFeasibilitySection(parcelId, envelope, demographics)
+      .then((sec) => {
+        if (!modal.classList.contains('open')) return;
+        dataEl.appendChild(sec);
       });
   }
 

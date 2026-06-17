@@ -638,6 +638,97 @@ body {
   flex-wrap: wrap;
 }
 
+/* ── Feasibility section ────────────────────────────────────────────────── */
+.feasibility-section {
+  margin-top: 12px;
+}
+.feasibility-typo-selector {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 10px;
+}
+.feasibility-typo-label {
+  font-size: 12px;
+  color: #888;
+  margin-right: 4px;
+}
+.feasibility-typo-btn {
+  padding: 3px 10px;
+  font-size: 12px;
+  border: 1px solid #ccc;
+  border-radius: 12px;
+  background: #f5f5f5;
+  cursor: pointer;
+  color: #444;
+  transition: background 0.15s, border-color 0.15s;
+}
+.feasibility-typo-btn.active {
+  background: #b8860b;
+  border-color: #b8860b;
+  color: #fff;
+}
+.feasibility-subsection {
+  margin-bottom: 8px;
+}
+.feasibility-sub-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #888;
+  margin: 10px 0 4px;
+}
+.feasibility-sub-title.feasibility-positive { color: #3a8c5a; }
+.feasibility-sub-title.feasibility-negative { color: #c0392b; }
+.report-row--indent dt { padding-left: 12px; color: #999; font-size: 12px; }
+.report-row--indent dd { color: #999; font-size: 12px; }
+.report-row--strong dt,
+.report-row--strong dd { font-weight: 600; color: #1a1a1a; }
+.report-row--sep { border-top: 1px solid #e8e8e8; padding-top: 4px; margin-top: 4px; }
+.feasibility-input {
+  width: 90px;
+  padding: 2px 6px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 13px;
+  text-align: right;
+  background: #fafafa;
+  color: #222;
+}
+.feasibility-input:focus {
+  outline: none;
+  border-color: #b8860b;
+  background: #fff;
+}
+.feasibility-toggle {
+  display: flex;
+  gap: 4px;
+}
+.feasibility-toggle-btn {
+  padding: 2px 10px;
+  font-size: 12px;
+  border: 1px solid #ccc;
+  border-radius: 10px;
+  background: #f5f5f5;
+  cursor: pointer;
+  color: #444;
+}
+.feasibility-toggle-btn.active {
+  background: #2c5f8a;
+  border-color: #2c5f8a;
+  color: #fff;
+}
+.feasibility-sources {
+  font-size: 10px;
+  color: #aaa;
+  line-height: 1.4;
+  margin-top: 10px;
+  border-top: 1px solid #eee;
+  padding-top: 6px;
+}
+
 @media print {
   body > *:not(#report-modal) { display: none !important; }
   #report-modal {
