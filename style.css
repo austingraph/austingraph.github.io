@@ -428,7 +428,9 @@ body {
 }
 .filter-clear:hover { background: rgba(255, 255, 255, 0.18); }
 
-/* ── Parcel Report button (in left detail panel header) ───────────────────── */
+/* ── Parcel Report / Center buttons (in left detail panel header) ────────── */
+#panel-center-btn { margin-right: 6px; }
+
 .report-btn {
   display: inline-block;
   margin-top: 10px;
