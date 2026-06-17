@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>austingraph</title>
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
-  <link rel="stylesheet" href="style.css?v=20260615" />
+  <link rel="stylesheet" href="style.css?v=20260617" />
 </head>
 <body>
   <div id="map"></div>
@@ -40,6 +40,7 @@
 
     <section>
       <h2>Development potential</h2>
+      <p id="env-capacity" class="env-capacity">&mdash;</p>
       <dl>
         <div><dt>Zoning</dt><dd id="env-zoning">&mdash;</dd></div>
         <div><dt>Setbacks</dt><dd id="env-setbacks">&mdash;</dd></div>
@@ -52,7 +53,8 @@
       <p id="env-status" class="panel-note"></p>
       <div class="env-legend">
         <span><i class="swatch swatch-setback"></i>Setback</span>
-        <span><i class="swatch swatch-buildable"></i>Buildable</span>
+        <span><i class="swatch swatch-buildable"></i>Available land</span>
+        <span><i class="swatch swatch-coverage"></i>Max coverage</span>
       </div>
     </section>
 
@@ -90,9 +92,9 @@
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <script src="https://unpkg.com/pmtiles@3.2.0/dist/pmtiles.js"></script>
   <script src="app.js?v=20260614"></script>
-  <script src="envelope.js?v=20260615c"></script>
+  <script src="envelope.js?v=20260617"></script>
   <script src="connections.js?v=20260613"></script>
-  <script src="report.js?v=20260616"></script>
+  <script src="report.js?v=20260617"></script>
   <script defer src="https://unpkg.com/maplibre-contour@0.0.5/dist/index.min.js"></script>
   <script defer src="https://unpkg.com/terra-draw/dist/terra-draw.umd.js"></script>
   <script defer src="https://unpkg.com/terra-draw-maplibre-gl-adapter/dist/terra-draw-maplibre-gl-adapter.umd.js"></script>

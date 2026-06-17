@@ -174,9 +174,18 @@ body {
 .conn-vote-nay  { color: #d9534f; }
 
 /* ── Development envelope ─────────────────────────────────────────────────── */
+.env-capacity {
+  margin: 4px 0 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #cfe9d8;
+}
+.env-capacity:empty { display: none; }
+
 .env-legend {
   display: flex;
-  gap: 14px;
+  flex-wrap: wrap;
+  gap: 8px 14px;
   margin-top: 10px;
   font-size: 12px;
   color: #999;
@@ -195,7 +204,8 @@ body {
   border-radius: 2px;
 }
 .swatch-setback   { background: #d9534f; opacity: 0.6; }
-.swatch-buildable { background: #4caf7d; opacity: 0.6; }
+.swatch-buildable { background: transparent; border: 1.5px solid #4caf7d; }
+.swatch-coverage  { background: #2e8b57; }
 #env-status:empty { display: none; }
 
 #panel footer {
