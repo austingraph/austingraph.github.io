@@ -184,11 +184,32 @@ function clearSelection() {
     );
     selectedParcelId = null;
   }
+  // Clear the search-selection GeoJSON highlight too.
+  map.getSource('selected-parcel-geojson')?.setData(
+    { type: 'FeatureCollection', features: [] }
+  );
   if (selectedParcelPropId !== null) {
     const parcel_id = selectedParcelPropId;
     selectedParcelPropId = null;
     window.dispatchEvent(new CustomEvent('parcel:deselect', { detail: { parcel_id } }));
   }
+}
+
+// Bounding box [[minLon,minLat],[maxLon,maxLat]] of a GeoJSON geometry.
+function bboxOfGeometry(geometry) {
+  let minLon = Infinity, maxLon = -Infinity, minLat = Infinity, maxLat = -Infinity;
+  const walk = (c) => {
+    if (typeof c[0] === 'number') {
+      if (c[0] < minLon) minLon = c[0];
+      if (c[0] > maxLon) maxLon = c[0];
+      if (c[1] < minLat) minLat = c[1];
+      if (c[1] > maxLat) maxLat = c[1];
+    } else {
+      c.forEach(walk);
+    }
+  };
+  walk(geometry.coordinates);
+  return [[minLon, minLat], [maxLon, maxLat]];
 }
 
 // Programmatic parcel selection by TCAD parcel_id (used by address search).
@@ -214,6 +235,14 @@ async function selectParcelById(parcel_id) {
     const geom = await res.json();
     if (geom && geom.type) {
       openPanel(parcel_id, geom);
+      // Highlight + fly using the real geometry (no tile feature id needed).
+      map.getSource('selected-parcel-geojson')?.setData({
+        type: 'FeatureCollection',
+        features: [{ type: 'Feature', properties: {}, geometry: geom }],
+      });
+      map.fitBounds(bboxOfGeometry(geom), {
+        padding: 80, maxZoom: 18, pitch: 0, bearing: 0, duration: 900,
+      });
     } else {
       // Open panel without geometry stats if RPC unavailable
       openPanel(parcel_id, null);
@@ -300,6 +329,25 @@ map.on('load', () => {
         0,
       ],
     },
+  });
+
+  // Search-selected highlight — drawn from real geometry (no tile feature id
+  // available when selecting by address), so it works regardless of tiles.
+  map.addSource('selected-parcel-geojson', {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features: [] },
+  });
+  map.addLayer({
+    id: 'selected-parcel-fill',
+    type: 'fill',
+    source: 'selected-parcel-geojson',
+    paint: { 'fill-color': '#e8a838', 'fill-opacity': 0.5 },
+  });
+  map.addLayer({
+    id: 'selected-parcel-outline',
+    type: 'line',
+    source: 'selected-parcel-geojson',
+    paint: { 'line-color': '#e8a838', 'line-width': 2 },
   });
 
   // ── Hover interaction ────────────────────────────────────────────────────
