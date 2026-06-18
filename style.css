@@ -212,7 +212,8 @@ body {
 #search-bar {
   position: absolute;
   top: 12px;
-  left: 12px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 10;
   width: 280px;
 }
