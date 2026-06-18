@@ -122,7 +122,14 @@
       pitch: 0,
       bearing: 0,
     });
-    reportMap.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), 'top-right');
+    // Lock zoom: the report focuses on a single parcel, so zooming in/out
+    // doesn't make sense. Disable all zoom interactions; panning stays enabled.
+    reportMap.scrollZoom.disable();
+    reportMap.boxZoom.disable();
+    reportMap.doubleClickZoom.disable();
+    reportMap.touchZoomRotate.disableRotation();
+    reportMap.touchZoomRotate.disable();
+    // NavigationControl with zoom buttons omitted on purpose (zoom is locked).
 
     reportMap.on('load', () => {
       const EMPTY = { type: 'FeatureCollection', features: [] };
