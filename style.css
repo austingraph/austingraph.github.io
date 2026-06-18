@@ -642,6 +642,16 @@ body {
 .feasibility-section {
   margin-top: 12px;
 }
+/* Panel sidebar: suppress report-level outer margin; content already padded by <section> */
+#panel-feasibility-content .feasibility-section {
+  margin-top: 0;
+}
+#panel-feasibility-content .report-section-title {
+  display: none; /* h2 in the <section> already serves as title */
+}
+#panel-feasibility-content .feasibility-sources {
+  font-size: 9px;
+}
 .feasibility-typo-selector {
   display: flex;
   flex-wrap: wrap;

@@ -330,4 +330,28 @@
   }
 
   window.AG.buildFeasibilitySection = buildFeasibilitySection;
+
+  // ── Panel integration ─────────────────────────────────────────────────────
+  // Render feasibility into the sidebar panel on envelope:ready.
+  const panelFeasSection = document.getElementById('panel-feasibility');
+  const panelFeasContent = document.getElementById('panel-feasibility-content');
+
+  window.addEventListener('envelope:ready', (e) => {
+    const envelope = e.detail?.envelope;
+    if (!panelFeasSection || !panelFeasContent) return;
+    panelFeasContent.innerHTML = '';
+    panelFeasSection.style.display = '';
+    const parcelId = window.AG.lastPanelData?.parcelId || '';
+    buildFeasibilitySection(parcelId, envelope, null).then((sec) => {
+      // Strip the outer wrapper — just take the inner content
+      panelFeasContent.innerHTML = '';
+      while (sec.firstChild) panelFeasContent.appendChild(sec.firstChild);
+    });
+  });
+
+  window.addEventListener('parcel:deselect', () => {
+    if (!panelFeasSection || !panelFeasContent) return;
+    panelFeasSection.style.display = 'none';
+    panelFeasContent.innerHTML = '';
+  });
 })();
