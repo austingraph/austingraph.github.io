@@ -363,21 +363,26 @@
 
   function populateData(data) {
     dataEl.innerHTML = '';
+    // Two-column body: feasibility headline (left, first thing read) + parcel
+    // details (right). Parcel id/address live in the report title, so the old
+    // "Parcel identity" card is intentionally dropped as redundant.
+    const feasCol = document.createElement('div');
+    feasCol.className = 'report-col';
+    feasCol.id = 'report-feas-col';
+    const detailCol = document.createElement('div');
+    detailCol.className = 'report-col';
+    detailCol.id = 'report-detail-col';
+    dataEl.appendChild(feasCol);
+    dataEl.appendChild(detailCol);
+
     const s = data.stats;
-    dataEl.appendChild(makeSection('Parcel identity', [
-      ['TCAD ID',    el('panel-parcel-id')],
-      ['Address',    el('meta-address')],
-      ['Legal',      el('meta-legal')],
-      ['TCAD Acres', el('meta-acres')],
-      ['Geo ID',     el('meta-geoid')],
-    ]));
-    dataEl.appendChild(makeSection('Dimensions', [
+    detailCol.appendChild(makeSection('Dimensions', [
       ['Area',      fmtArea(s.areaM2)],
       ['Perimeter', fmtFeet(s.perimM)],
       ['Width',     fmtFeet(s.widthM)],
       ['Height',    fmtFeet(s.heightM)],
     ]));
-    dataEl.appendChild(makeSection('Development potential', [
+    detailCol.appendChild(makeSection('Development potential', [
       ['Capacity',       el('env-capacity')],
       ['Zoning',         el('env-zoning')],
       ['Setbacks',       el('env-setbacks')],
@@ -392,7 +397,7 @@
     const firstCase  = casesEl?.querySelector('.conn-title')?.textContent || '—';
     const caseStatus = casesEl?.querySelector('.conn-badge')?.textContent  || '';
     const permitCount = permitsEl?.querySelectorAll('.conn-item').length ?? 0;
-    dataEl.appendChild(makeSection('Civic connections', [
+    detailCol.appendChild(makeSection('Civic connections', [
       ['Latest case',  firstCase + (caseStatus ? ` (${caseStatus})` : '')],
       ['Permit count', permitCount > 0 ? String(permitCount) : '—'],
     ]));
@@ -410,10 +415,11 @@
 
   // ── Demographics (zoning-contextual) ─────────────────────────────────────────
   function fetchDemographics(parcelId, token) {
+    const detailCol = document.getElementById('report-detail-col') || dataEl;
     const noteEl = document.createElement('p');
     noteEl.className = 'report-env-note';
     noteEl.textContent = 'Loading neighborhood profile…';
-    dataEl.appendChild(noteEl);
+    detailCol.appendChild(noteEl);
 
     fetch(`${window.AG.SUPABASE_URL}/rest/v1/rpc/parcel_demographics`, {
       method: 'POST',
@@ -430,14 +436,14 @@
         if (!modal.classList.contains('open')) return;
         noteEl.remove();
         if (d?.status === 'ok') {
-          dataEl.appendChild(buildDemographicsSection(d));
+          detailCol.appendChild(buildDemographicsSection(d));
           // Feasibility section uses median rent from demographics
           appendFeasibility(parcelId, d);
         } else if (d?.status === 'no_census') {
           const msg = document.createElement('p');
           msg.className = 'report-env-note';
           msg.textContent = 'Census data not available for this parcel (outside City limits or county parcel).';
-          dataEl.appendChild(msg);
+          detailCol.appendChild(msg);
           appendFeasibility(parcelId, null);
         }
       })
@@ -450,11 +456,12 @@
 
   function appendFeasibility(parcelId, demographics) {
     if (typeof window.AG.buildFeasibilitySection !== 'function') return;
+    const feasCol = document.getElementById('report-feas-col') || dataEl;
     const envelope = window.AG.lastEnvelope;
     window.AG.buildFeasibilitySection(parcelId, envelope, demographics)
       .then((sec) => {
         if (!modal.classList.contains('open')) return;
-        dataEl.appendChild(sec);
+        feasCol.appendChild(sec);
       });
   }
 
@@ -531,7 +538,9 @@
     const data = window.AG?.lastPanelData;
     if (!data) return;
 
-    titleEl.textContent = `Parcel Report — ${data.parcelId}`;
+    const addr = document.getElementById('meta-address')?.textContent?.trim();
+    titleEl.textContent = `Parcel Report — ${data.parcelId}` +
+      (addr && addr !== '—' ? ` · ${addr}` : '');
     notesEl.value = '';
     printImg.src = '';
     printImg.style.display = 'none';
