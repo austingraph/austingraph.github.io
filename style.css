@@ -578,6 +578,17 @@ body {
   grid-template-columns: 1fr 1fr;
   gap: 16px;
   margin-bottom: 16px;
+  align-items: start;
+}
+/* Left column = feasibility (read first); right column = parcel details. */
+.report-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+@media (max-width: 620px) {
+  #report-data { grid-template-columns: 1fr; }
 }
 .report-section {
   background: #f7f7f8;
@@ -641,16 +652,6 @@ body {
 /* ── Feasibility section ────────────────────────────────────────────────── */
 .feasibility-section {
   margin-top: 12px;
-}
-/* Panel sidebar: suppress report-level outer margin; content already padded by <section> */
-#panel-feasibility-content .feasibility-section {
-  margin-top: 0;
-}
-#panel-feasibility-content .report-section-title {
-  display: none; /* h2 in the <section> already serves as title */
-}
-#panel-feasibility-content .feasibility-sources {
-  font-size: 9px;
 }
 .feasibility-typo-selector {
   display: flex;
