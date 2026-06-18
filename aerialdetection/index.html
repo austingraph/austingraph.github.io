@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Aerial Compliance Detection · austingraph</title>
+  <meta name="description" content="Detecting likely code violations and bad planning in Austin from high-res aerials + TCAD parcels, with Claude-authored, cited writeups." />
+  <link rel="stylesheet" href="style.css?v=20260618a" />
+</head>
+<body>
+  <header class="hero">
+    <a class="back" href="https://austingraph.chat">&larr; austingraph</a>
+    <h1>Aerial Compliance Detection</h1>
+    <p class="tagline">
+      Finding likely code violations and bad planning across Travis County —
+      high-resolution aerials measured against the 374k-parcel TCAD database,
+      with defensible, cited writeups authored by Claude.
+    </p>
+    <div class="badges">
+      <span class="badge badge-status">Status: research / prototyping</span>
+      <span class="badge">Geometry: SAM 2 · PostGIS</span>
+      <span class="badge">Reasoning: Claude Opus 4.8</span>
+    </div>
+    <nav class="hero-links">
+      <a href="PLAN.md">Blueprint</a>
+      <a href="ARCHITECTURE.md">Architecture</a>
+      <a href="README.md">How it runs</a>
+      <a href="https://github.com/austingraph/austingraph.github.io/tree/main/aerialdetection">Source</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="pipeline-strip" aria-label="Pipeline overview">
+      <ol>
+        <li><b>1 · Tile</b><span>Clip GeoTIFF to each parcel polygon</span></li>
+        <li><b>2 · Segment</b><span>SAM 2 footprints: building, drive, pool</span></li>
+        <li><b>3 · Measure</b><span>Coverage, impervious, setbacks in PostGIS</span></li>
+        <li><b>4 · Cross-check</b><span>Footprints vs permit records</span></li>
+        <li><b>5 · Reason</b><span>Claude: issue JSON + cited narrative</span></li>
+        <li><b>6 · Serve</b><span>Supabase results → map overlay</span></li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>Sample findings</h2>
+      <p class="section-note" id="results-status">Loading sample parcels&hellip;</p>
+      <div id="results" class="cards" aria-live="polite"></div>
+    </section>
+
+    <section class="disclaimer">
+      <h2>Reading these findings</h2>
+      <p>
+        Every flag is <b>advisory</b>, not a determination. Measurements come from
+        imagery of a specific vintage and capture date, which is stamped on each
+        writeup; conditions may have changed. Claude never invents a measurement —
+        numbers are computed in PostGIS and passed to the model as structured input,
+        and the narrative cites them. Treat output as a prioritized list of parcels
+        worth a human look, nothing more.
+      </p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <span>austingraph · aerial compliance detection</span>
+    <span id="data-meta"></span>
+  </footer>
+
+  <script src="app.js?v=20260618a"></script>
+</body>
+</html>

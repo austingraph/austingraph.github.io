@@ -1,0 +1,12 @@
+# Geometry / raster stack
+rasterio
+geopandas
+shapely
+scikit-image
+numpy
+# Segmentation runs on a GPU host; install torch + SAM 2 there, not in CI:
+#   torch, segment-anything-2 (or grounding-dino)
+# DB
+psycopg[binary]
+# Reasoning / writeups
+anthropic>=0.50

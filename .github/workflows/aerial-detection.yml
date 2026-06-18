@@ -1,0 +1,59 @@
+name: Aerial compliance detection
+
+# Orchestrates the aerial compliance-detection pipeline (tile → measure →
+# permit cross-check → Claude writeups) and writes per-parcel findings.
+#
+# Manual-only (workflow_dispatch) and a CLEAN NO-OP until the ANTHROPIC_API_KEY
+# and DATABASE_URL repo secrets are set — so it never emails failures before
+# it's configured. GPU-bound segmentation (SAM 2) runs elsewhere (self-hosted
+# runner / hosted GPU); this hosted job orchestrates the CPU stages and the
+# Claude passes. See aerialdetection/README.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      district:
+        description: "Zoning district or parcel batch to scan"
+        required: false
+        default: ""
+
+concurrency:
+  group: aerial-detection
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DISTRICT: ${{ github.event.inputs.district }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check configuration
+        id: guard
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ] || [ -z "$DATABASE_URL" ]; then
+            echo "ANTHROPIC_API_KEY and/or DATABASE_URL not set — nothing to do."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.guard.outputs.configured == 'true'
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        if: steps.guard.outputs.configured == 'true'
+        run: pip install -r aerialdetection/pipeline/requirements.txt
+
+      - name: Run detection
+        if: steps.guard.outputs.configured == 'true'
+        working-directory: aerialdetection/pipeline
+        run: |
+          echo "TODO: orchestrate tile → measure → permit_check → writeup for $DISTRICT"
+          echo "and upsert findings to Supabase. Until implemented, this is a no-op."
