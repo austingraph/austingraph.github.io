@@ -19,37 +19,87 @@
   const elCapacity   = document.getElementById('env-capacity');
   const elStatus     = document.getElementById('env-status');
 
-  map.on('load', () => {
-    map.addSource('envelope-setback',   { type: 'geojson', data: EMPTY_FC });
-    map.addSource('envelope-buildable', { type: 'geojson', data: EMPTY_FC });
-    map.addSource('envelope-coverage',  { type: 'geojson', data: EMPTY_FC });
-
-    map.addLayer({
-      id: 'envelope-setback-fill',
-      type: 'fill',
-      source: 'envelope-setback',
-      paint: { 'fill-color': '#d9534f', 'fill-opacity': 0.25 },
-    });
+  // Layer specs for the (flat, 2D) envelope overlay. Shared so any map — the
+  // main map here and the parcel-report mini-map — renders setbacks / buildable
+  // / coverage identically. `src` is the source suffix; `suffix` the layer
+  // suffix. Both are namespaced with a per-map prefix in addEnvelopeLayers().
+  const ENV_LAYER_SPECS = [
+    { suffix: 'setback-fill',      src: 'setback',   type: 'fill',
+      paint: { 'fill-color': '#d9534f', 'fill-opacity': 0.25 } },
     // Buildable footprint reads as "available land" — faint fill + green outline.
-    map.addLayer({
-      id: 'envelope-buildable-fill',
-      type: 'fill',
-      source: 'envelope-buildable',
-      paint: { 'fill-color': '#4caf7d', 'fill-opacity': 0.06 },
-    });
-    map.addLayer({
-      id: 'envelope-buildable-outline',
-      type: 'line',
-      source: 'envelope-buildable',
-      paint: { 'line-color': '#4caf7d', 'line-width': 1.5 },
-    });
+    { suffix: 'buildable-fill',    src: 'buildable', type: 'fill',
+      paint: { 'fill-color': '#4caf7d', 'fill-opacity': 0.06 } },
+    { suffix: 'buildable-outline', src: 'buildable', type: 'line',
+      paint: { 'line-color': '#4caf7d', 'line-width': 1.5 } },
     // Max-coverage footprint — the focal shape: how much ground you can cover.
-    map.addLayer({
-      id: 'envelope-coverage-fill',
-      type: 'fill',
-      source: 'envelope-coverage',
-      paint: { 'fill-color': '#2e8b57', 'fill-opacity': 0.35 },
-    });
+    { suffix: 'coverage-fill',     src: 'coverage',  type: 'fill',
+      paint: { 'fill-color': '#2e8b57', 'fill-opacity': 0.35 } },
+  ];
+
+  // Add the three envelope sources + their layers to `targetMap`, namespaced by
+  // `prefix` (e.g. 'envelope' on the main map, 'rp-env' on the report map).
+  // Optional `beforeId` inserts the layers beneath an existing layer.
+  function addEnvelopeLayers(targetMap, prefix, beforeId) {
+    for (const s of ['setback', 'buildable', 'coverage']) {
+      if (!targetMap.getSource(`${prefix}-${s}`)) {
+        targetMap.addSource(`${prefix}-${s}`, { type: 'geojson', data: EMPTY_FC });
+      }
+    }
+    for (const spec of ENV_LAYER_SPECS) {
+      const id = `${prefix}-${spec.suffix}`;
+      if (!targetMap.getLayer(id)) {
+        targetMap.addLayer({ id, type: spec.type, source: `${prefix}-${spec.src}`, paint: spec.paint }, beforeId);
+      }
+    }
+  }
+
+  // Push computed-envelope geometry `d` into a prefix-namespaced set of layers.
+  // `moveToTop` re-stacks the layers above later-added ones (needed on the main
+  // map so hillshade doesn't occlude them; the report map keeps draw/measure on
+  // top, so it passes false).
+  function setEnvelopeData(targetMap, prefix, d, moveToTop = true) {
+    const fc = envelopeFeatureCollections(d);
+    targetMap.getSource(`${prefix}-setback`)?.setData(fc.setback);
+    targetMap.getSource(`${prefix}-buildable`)?.setData(fc.buildable);
+    targetMap.getSource(`${prefix}-coverage`)?.setData(fc.coverage);
+    if (moveToTop) {
+      for (const spec of ENV_LAYER_SPECS) {
+        const id = `${prefix}-${spec.suffix}`;
+        if (targetMap.getLayer(id)) targetMap.moveLayer(id);
+      }
+    }
+  }
+
+  // Derive the three FeatureCollections (setback zone, buildable footprint,
+  // scaled max-coverage footprint) from a computed-envelope payload. Returns
+  // empties for a missing/non-ok payload.
+  function envelopeFeatureCollections(d) {
+    if (!d || d.status !== 'ok') {
+      return { setback: EMPTY_FC, buildable: EMPTY_FC, coverage: EMPTY_FC };
+    }
+    const setback   = d.setback_zone ? { type: 'FeatureCollection', features: [d.setback_zone] } : EMPTY_FC;
+    const buildable = d.buildable    ? { type: 'FeatureCollection', features: [d.buildable] }    : EMPTY_FC;
+
+    // Max-coverage footprint: shrink the buildable shape to the coverage cap area.
+    let coverage = EMPTY_FC;
+    if (d.buildable && d.buildable_sqft > 0) {
+      const cover  = d.max_building_cover_sqft;
+      const k      = cover != null ? Math.sqrt(Math.min(1, cover / d.buildable_sqft)) : 1;
+      const center = bboxCenter(d.buildable.geometry);
+      coverage = {
+        type: 'FeatureCollection',
+        features: [{ type: 'Feature', properties: {}, geometry: scaleGeometry(d.buildable.geometry, center, k) }],
+      };
+    }
+    return { setback, buildable, coverage };
+  }
+
+  // Expose the shared helpers so report.js can mirror the overlay on its map.
+  window.AG.addEnvelopeLayers = addEnvelopeLayers;
+  window.AG.setEnvelopeData   = setEnvelopeData;
+
+  map.on('load', () => {
+    addEnvelopeLayers(map, 'envelope');
   });
 
   function fmtSqft(n) {
@@ -172,34 +222,8 @@
     }
     elStatus.textContent = notes.join(' ');
 
-    map.getSource('envelope-setback')?.setData(
-      d.setback_zone ? { type: 'FeatureCollection', features: [d.setback_zone] } : EMPTY_FC
-    );
-    map.getSource('envelope-buildable')?.setData(
-      d.buildable ? { type: 'FeatureCollection', features: [d.buildable] } : EMPTY_FC
-    );
-
-    // Max-coverage footprint: shrink the buildable shape to the coverage cap area.
-    let coverageFC = EMPTY_FC;
-    if (d.buildable && d.buildable_sqft > 0) {
-      const cover = d.max_building_cover_sqft;
-      const k = cover != null ? Math.sqrt(Math.min(1, cover / d.buildable_sqft)) : 1;
-      const center = bboxCenter(d.buildable.geometry);
-      coverageFC = {
-        type: 'FeatureCollection',
-        features: [{
-          type: 'Feature',
-          properties: {},
-          geometry: scaleGeometry(d.buildable.geometry, center, k),
-        }],
-      };
-    }
-    map.getSource('envelope-coverage')?.setData(coverageFC);
-
-    // Move envelope layers to top of stack so hillshade/other layers don't occlude them.
-    for (const id of ['envelope-setback-fill', 'envelope-buildable-fill', 'envelope-buildable-outline', 'envelope-coverage-fill']) {
-      if (map.getLayer(id)) map.moveLayer(id);
-    }
+    // Render the overlay (and re-stack above hillshade) via the shared helper.
+    setEnvelopeData(map, 'envelope', d);
 
     window.AG.lastEnvelope = d;
     window.dispatchEvent(new CustomEvent('envelope:ready', { detail: { envelope: d } }));

@@ -106,6 +106,11 @@
         : EMPTY
     );
 
+    // Mirror the main map's development envelope for the same parcel. lastEnvelope
+    // is populated by envelope.js when the parcel is selected (before the report
+    // opens). moveToTop=false keeps the overlay beneath parcel-outline/draw layers.
+    window.AG?.setEnvelopeData?.(reportMap, 'rp-env', window.AG.lastEnvelope, false);
+
     if (pendingGeom) {
       reportMap.fitBounds(bboxFromGeometry(pendingGeom),
         { padding: 80, maxZoom: 19, pitch: 0, bearing: 0, animate: false });
@@ -139,6 +144,12 @@
       // Parcel outline
       reportMap.addLayer({ id: 'rp-parcel-outline', type: 'line', source: 'rp-parcel',
         paint: { 'line-color': '#000', 'line-width': 2.5 } });
+
+      // Development envelope overlay (setback / buildable / coverage), rendered
+      // exactly as on the main map via envelope.js's shared helper. Inserted
+      // beneath the parcel outline so the boundary — and measure/draw layers
+      // added below — stay visually on top.
+      window.AG?.addEnvelopeLayers?.(reportMap, 'rp-env', 'rp-parcel-outline');
 
       // Measure layers
       reportMap.addSource('rp-measure-pts',  { type: 'geojson', data: EMPTY });
