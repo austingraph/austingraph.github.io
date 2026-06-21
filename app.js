@@ -117,8 +117,33 @@ const elAcres  = document.getElementById('meta-acres');
 const elGeoId  = document.getElementById('meta-geoid');
 const elMetaSt = document.getElementById('meta-status');
 const elTcad   = document.getElementById('panel-tcad-link');
+const elFlum     = document.getElementById('plan-flum');
+const elPlanZone = document.getElementById('plan-zoning');
+const elUpzone   = document.getElementById('plan-upzoning');
+const elPlanSt   = document.getElementById('plan-status');
 
 let metaFetchToken = 0;
+
+function renderPlanning(row) {
+  if (!row) {
+    elFlum.textContent = elPlanZone.textContent = '—';
+    return;
+  }
+  elFlum.textContent     = row.flum_label || (row.flum_code != null ? `Code ${row.flum_code}` : null)
+                         || 'Outside any adopted Future Land Use Map';
+  elPlanZone.textContent = row.zoning_ztype || row.zoning_base || 'Outside City of Austin zoning';
+
+  // Upzoning signal: FLUM intends more intensity than current zoning.
+  if (row.upzoning_flag && row.upzoning_gap > 0) {
+    elUpzone.textContent =
+      `Future land use intends higher intensity than current zoning ` +
+      `(+${row.upzoning_gap} on the intensity scale) — potential upzoning / redevelopment candidate.`;
+    elUpzone.classList.add('flag-upzoning');
+  } else {
+    elUpzone.textContent = '';
+    elUpzone.classList.remove('flag-upzoning');
+  }
+}
 
 function openPanel(parcelId, geometry) {
   elId.textContent = parcelId;
@@ -134,18 +159,22 @@ function openPanel(parcelId, geometry) {
   elPerim.textContent  = geometry ? fmtFeet(s.perimM)  : '—';
   elExtent.textContent = geometry ? `${fmtFeet(s.widthM)} × ${fmtFeet(s.heightM)}` : '—';
 
-  // Reset metadata fields, then fetch from Supabase
+  // Reset metadata + planning fields, then fetch from Supabase
   elAddr.textContent = elLegal.textContent = elAcres.textContent = elGeoId.textContent = '—';
   elMetaSt.textContent = 'Loading…';
+  elFlum.textContent = elPlanZone.textContent = '—';
+  elUpzone.textContent = elPlanSt.textContent = '';
 
   const token = ++metaFetchToken;
-  fetch(`${SUPABASE_URL}/rest/v1/parcels?parcel_id=eq.${encodeURIComponent(parcelId)}&select=metadata`, {
+  const cols = 'metadata,flum_label,flum_code,zoning_ztype,zoning_base,upzoning_gap,upzoning_flag';
+  fetch(`${SUPABASE_URL}/rest/v1/parcels?parcel_id=eq.${encodeURIComponent(parcelId)}&select=${cols}`, {
     headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
   })
     .then((r) => r.json())
     .then((rows) => {
       if (token !== metaFetchToken) return; // stale response
-      const meta = rows?.[0]?.metadata;
+      const row = rows?.[0];
+      const meta = row?.metadata;
       if (meta) {
         elAddr.textContent  = meta.situs_address || '—';
         elLegal.textContent = meta.legal_desc    || '—';
@@ -155,10 +184,12 @@ function openPanel(parcelId, geometry) {
       } else {
         elMetaSt.textContent = 'No property record in database yet.';
       }
+      renderPlanning(row);
     })
     .catch(() => {
       if (token !== metaFetchToken) return;
       elMetaSt.textContent = 'Could not load property record.';
+      elPlanSt.textContent = 'Could not load planning context.';
     });
 
   panel.classList.add('open');

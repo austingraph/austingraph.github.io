@@ -206,7 +206,18 @@ body {
 .swatch-setback   { background: #d9534f; opacity: 0.6; }
 .swatch-buildable { background: transparent; border: 1.5px solid #4caf7d; }
 .swatch-coverage  { background: #2e8b57; }
-#env-status:empty { display: none; }
+.swatch-massing   { background: #e8a838; opacity: 0.8; }
+
+#env-status:empty,
+#plan-status:empty,
+#plan-upzoning:empty { display: none; }
+
+/* Upzoning signal: intended future use outranks current zoning */
+.flag-upzoning {
+  color: #2e7d52;
+  font-style: normal;
+  font-weight: 600;
+}
 
 /* ── Address search bar ─────────────────────────────────────────────────── */
 #search-bar {
