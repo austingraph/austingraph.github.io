@@ -241,6 +241,61 @@ body {
   outline: none;
   color: #222;
 }
+
+/* ── Overlays menu (top, right of the search bar) ──────────────────────────── */
+#overlays-menu {
+  position: absolute;
+  top: 12px;
+  left: calc(50% + 160px);
+  z-index: 11;
+}
+#overlays-menu-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border: none;
+  border-radius: 20px;
+  font-size: 13.5px;
+  font-family: inherit;
+  font-weight: 600;
+  color: #222;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  cursor: pointer;
+  white-space: nowrap;
+}
+#overlays-menu-btn:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.35); }
+#overlays-menu-btn.open { background: #e8a838; }
+.overlays-burger { font-size: 15px; line-height: 1; }
+
+#overlays-menu-content {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 230px;
+  max-height: 80vh;
+  overflow-y: auto;
+  background: rgba(18, 18, 22, 0.96);
+  backdrop-filter: blur(8px);
+  color: #e8e8ea;
+  padding: 14px 16px;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+}
+#overlays-menu-content[hidden] { display: none; }
+
+/* Upzoning group toggle — green accent to match the planning signal */
+.flum-upzoning span { color: #5fd49a; font-weight: 600; }
+.flum-upzoning input[type="checkbox"] { accent-color: #2e9e6a; }
+
+@media (max-width: 640px) {
+  #overlays-menu { left: auto; right: 12px; }
+  #overlays-menu-content { left: auto; right: 0; }
+}
 #search-input:focus {
   box-shadow: 0 2px 12px rgba(0,0,0,0.35);
 }
