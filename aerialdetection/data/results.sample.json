@@ -1,0 +1,51 @@
+{
+  "schema_version": "0.1",
+  "imagery_vintage": "CAPCOG 2020 (3-inch)",
+  "generated_by": "Claude Opus 4.8",
+  "note": "Illustrative sample only — fabricated parcels for UI preview, not real findings.",
+  "parcels": [
+    {
+      "parcel_id": "TCAD-0123456",
+      "address": "1200 Example Ridge Dr",
+      "severity": "high",
+      "issue": "Detached structure (~480 sq ft) with no matching building permit",
+      "confidence": 0.74,
+      "capture_date": "2020-02-11",
+      "metrics": [
+        { "label": "lot coverage", "value": "47%" },
+        { "label": "zoning cap", "value": "40%" },
+        { "label": "rear setback", "value": "3.1 ft" }
+      ],
+      "writeup": "A 480 sq ft accessory footprint sits 3.1 ft from the rear property line (SF-3 requires 10 ft) with no permit on record since 2015. Lot coverage measures 47% against a 40% cap. Advisory; verify against current imagery.",
+      "footprints": ["primary_dwelling", "detached_adu", "driveway"]
+    },
+    {
+      "parcel_id": "TCAD-0789012",
+      "address": "44 Cedar Hollow Ln",
+      "severity": "medium",
+      "issue": "Impervious cover over zoning limit (pool + expanded driveway)",
+      "confidence": 0.61,
+      "capture_date": "2020-02-11",
+      "metrics": [
+        { "label": "impervious", "value": "52%" },
+        { "label": "limit", "value": "45%" }
+      ],
+      "writeup": "NDVI split puts impervious surface at 52% versus a 45% limit, driven by a pool deck and a driveway widened beyond the permitted footprint. Setbacks are within tolerance.",
+      "footprints": ["primary_dwelling", "pool", "driveway"]
+    },
+    {
+      "parcel_id": "TCAD-0345678",
+      "address": "907 Westlake Bluff",
+      "severity": "low",
+      "issue": "Minor side-setback encroachment within measurement tolerance",
+      "confidence": 0.38,
+      "capture_date": "2020-02-11",
+      "metrics": [
+        { "label": "side setback", "value": "4.7 ft" },
+        { "label": "required", "value": "5 ft" }
+      ],
+      "writeup": "Eave line measures 4.7 ft from the side lot line against a 5 ft requirement — within the ±0.5 ft error band for 3-inch imagery. Flagged for completeness only.",
+      "footprints": ["primary_dwelling"]
+    }
+  ]
+}

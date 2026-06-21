@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>austingraph</title>
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=20260618a" />
 </head>
 <body>
   <div id="map"></div>
@@ -15,6 +15,8 @@
     <header>
       <h1 id="panel-parcel-id">—</h1>
       <p class="panel-sub">TCAD Property ID</p>
+      <button id="panel-center-btn" class="report-btn" style="display:none" aria-label="Re-center map on parcel">&#8857; Center</button>
+      <button id="panel-report-btn" class="report-btn" style="display:none">Parcel Report</button>
     </header>
 
     <section>
@@ -49,6 +51,7 @@
 
     <section>
       <h2>Development potential</h2>
+      <p id="env-capacity" class="env-capacity">&mdash;</p>
       <dl>
         <div><dt>Zoning</dt><dd id="env-zoning">&mdash;</dd></div>
         <div><dt>Setbacks</dt><dd id="env-setbacks">&mdash;</dd></div>
@@ -61,14 +64,16 @@
       <p id="env-status" class="panel-note"></p>
       <div class="env-legend">
         <span><i class="swatch swatch-setback"></i>Setback</span>
-        <span><i class="swatch swatch-buildable"></i>Buildable</span>
-        <span><i class="swatch swatch-massing"></i>Max massing</span>
+        <span><i class="swatch swatch-buildable"></i>Available land</span>
+        <span><i class="swatch swatch-coverage"></i>Max coverage</span>
       </div>
     </section>
 
     <section>
       <h2>Connections</h2>
-      <p class="panel-note">Graph &amp; document connections coming soon.</p>
+      <p id="conn-status" class="panel-note">Select a parcel to see civic records.</p>
+      <div id="conn-cases" class="conn-group"></div>
+      <div id="conn-permits" class="conn-group"></div>
     </section>
 
     <footer>
@@ -76,9 +81,38 @@
     </footer>
   </aside>
 
+  <div id="report-modal" aria-hidden="true">
+    <div id="report-modal-inner">
+      <button id="report-close" aria-label="Close report">&times;</button>
+      <h2 id="report-title">Parcel Report</h2>
+      <!-- Toolbar injected by report.js -->
+      <div id="report-toolbar"></div>
+      <!-- Live interactive mini-map (hidden at print time) -->
+      <div id="report-map"></div>
+      <!-- Print-only snapshot baked at print time -->
+      <img id="report-print-img" alt="Parcel map" />
+      <div id="report-data"></div>
+      <div id="report-notes-wrap">
+        <label for="report-notes" class="report-section-label">Notes</label>
+        <textarea id="report-notes" placeholder="Add notes for this parcel…"></textarea>
+      </div>
+      <div id="report-footer-bar"></div>
+    </div>
+  </div>
+
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <script src="https://unpkg.com/pmtiles@3.2.0/dist/pmtiles.js"></script>
-  <script src="app.js"></script>
-  <script src="envelope.js"></script>
+  <script src="app.js?v=20260617b"></script>
+  <script src="search.js?v=20260617"></script>
+  <script src="envelope.js?v=20260617"></script>
+  <script src="connections.js?v=20260613"></script>
+  <script src="feasibility.js?v=20260617c"></script>
+  <script src="report.js?v=20260618a"></script>
+  <script defer src="https://unpkg.com/maplibre-contour@0.0.5/dist/index.min.js"></script>
+  <script defer src="https://unpkg.com/terra-draw/dist/terra-draw.umd.js"></script>
+  <script defer src="https://unpkg.com/terra-draw-maplibre-gl-adapter/dist/terra-draw-maplibre-gl-adapter.umd.js"></script>
+  <script defer src="maptools.js?v=20260617d"></script>
+  <!-- filters.js after maptools.js: it injects into the shared #map-tools-content panel -->
+  <script defer src="filters.js?v=20260614b"></script>
 </body>
 </html>

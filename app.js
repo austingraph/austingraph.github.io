@@ -5,7 +5,7 @@
 
 const SUPABASE_URL = 'https://aqbyxpiwugcvoephsvpm.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_QMWSj0CLYe3k3XSGCsWOhw_5RsI-nmN';
-const PMTILES_URL  = `${SUPABASE_URL}/storage/v1/object/public/tiles/parcels.pmtiles`;
+const PMTILES_URL  = `${SUPABASE_URL}/storage/v1/object/public/tiles/parcels.pmtiles?v=20260614`;
 
 // Register the PMTiles protocol with MapLibre
 const protocol = new pmtiles.Protocol();
@@ -14,8 +14,8 @@ maplibregl.addProtocol('pmtiles', protocol.tile.bind(protocol));
 const map = new maplibregl.Map({
   container: 'map',
   style: 'https://tiles.openfreemap.org/styles/liberty',
-  center: [-97.7431, 30.2672],  // Austin, TX
-  zoom: 11,
+  center: [-97.7440, 30.2580],  // South Congress / Bouldin — data-rich parcels
+  zoom: 16,
   minZoom: 9,
   maxZoom: 19,
 });
@@ -55,6 +55,7 @@ function haversine([lon1, lat1], [lon2, lat2]) {
 }
 
 function geometryStats(geometry) {
+  if (!geometry) return { areaM2: 0, perimM: 0, widthM: 0, heightM: 0 };
   // Normalize Polygon/MultiPolygon into a list of polygons
   const polys = geometry.type === 'Polygon' ? [geometry.coordinates]
               : geometry.type === 'MultiPolygon' ? geometry.coordinates
@@ -149,9 +150,14 @@ function openPanel(parcelId, geometry) {
   elTcad.href = `https://travis.prodigycad.com/property-detail/${parcelId}`;
 
   const s = geometryStats(geometry);
-  elArea.textContent   = fmtArea(s.areaM2);
-  elPerim.textContent  = fmtFeet(s.perimM);
-  elExtent.textContent = `${fmtFeet(s.widthM)} × ${fmtFeet(s.heightM)}`;
+  window.AG.lastPanelData = { parcelId, geometry, stats: s };
+  const reportBtn = document.getElementById('panel-report-btn');
+  if (reportBtn) reportBtn.style.display = '';
+  const centerBtn = document.getElementById('panel-center-btn');
+  if (centerBtn) centerBtn.style.display = '';
+  elArea.textContent   = geometry ? fmtArea(s.areaM2)  : '—';
+  elPerim.textContent  = geometry ? fmtFeet(s.perimM)  : '—';
+  elExtent.textContent = geometry ? `${fmtFeet(s.widthM)} × ${fmtFeet(s.heightM)}` : '—';
 
   // Reset metadata + planning fields, then fetch from Supabase
   elAddr.textContent = elLegal.textContent = elAcres.textContent = elGeoId.textContent = '—';
@@ -193,11 +199,28 @@ function openPanel(parcelId, geometry) {
 function closePanel() {
   panel.classList.remove('open');
   panel.setAttribute('aria-hidden', 'true');
+  const reportBtn = document.getElementById('panel-report-btn');
+  if (reportBtn) reportBtn.style.display = 'none';
+  const centerBtn = document.getElementById('panel-center-btn');
+  if (centerBtn) centerBtn.style.display = 'none';
+  window.AG.lastPanelData = null;
 }
 
 document.getElementById('panel-close').addEventListener('click', () => {
   clearSelection();
   closePanel();
+});
+
+document.getElementById('panel-center-btn').addEventListener('click', () => {
+  const data = window.AG.lastPanelData;
+  if (!data) return;
+  if (data.geometry) {
+    map.fitBounds(bboxOfGeometry(data.geometry),
+      { padding: 80, maxZoom: 18, pitch: 0, bearing: 0, duration: 900 });
+  } else {
+    window.dispatchEvent(new CustomEvent('parcel:select',
+      { detail: { parcel_id: data.parcelId } }));
+  }
 });
 
 function clearSelection() {
@@ -208,12 +231,76 @@ function clearSelection() {
     );
     selectedParcelId = null;
   }
+  // Clear the search-selection GeoJSON highlight too.
+  map.getSource('selected-parcel-geojson')?.setData(
+    { type: 'FeatureCollection', features: [] }
+  );
   if (selectedParcelPropId !== null) {
     const parcel_id = selectedParcelPropId;
     selectedParcelPropId = null;
     window.dispatchEvent(new CustomEvent('parcel:deselect', { detail: { parcel_id } }));
   }
 }
+
+// Bounding box [[minLon,minLat],[maxLon,maxLat]] of a GeoJSON geometry.
+function bboxOfGeometry(geometry) {
+  let minLon = Infinity, maxLon = -Infinity, minLat = Infinity, maxLat = -Infinity;
+  const walk = (c) => {
+    if (typeof c[0] === 'number') {
+      if (c[0] < minLon) minLon = c[0];
+      if (c[0] > maxLon) maxLon = c[0];
+      if (c[1] < minLat) minLat = c[1];
+      if (c[1] > maxLat) maxLat = c[1];
+    } else {
+      c.forEach(walk);
+    }
+  };
+  walk(geometry.coordinates);
+  return [[minLon, minLat], [maxLon, maxLat]];
+}
+
+// Programmatic parcel selection by TCAD parcel_id (used by address search).
+// Fetches geometry from Supabase, opens the panel, and fires parcel:select.
+async function selectParcelById(parcel_id) {
+  clearSelection();
+  closePanel();
+  selectedParcelPropId = parcel_id;
+
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/rpc/parcel_geojson`,
+      {
+        method: 'POST',
+        headers: {
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ p_parcel_id: parcel_id }),
+      }
+    );
+    const geom = await res.json();
+    if (geom && geom.type) {
+      openPanel(parcel_id, geom);
+      // Highlight + fly using the real geometry (no tile feature id needed).
+      map.getSource('selected-parcel-geojson')?.setData({
+        type: 'FeatureCollection',
+        features: [{ type: 'Feature', properties: {}, geometry: geom }],
+      });
+      map.fitBounds(bboxOfGeometry(geom), {
+        padding: 80, maxZoom: 18, pitch: 0, bearing: 0, duration: 900,
+      });
+    } else {
+      // Open panel without geometry stats if RPC unavailable
+      openPanel(parcel_id, null);
+    }
+  } catch (_) {
+    openPanel(parcel_id, null);
+  }
+
+  window.dispatchEvent(new CustomEvent('parcel:select', { detail: { parcel_id } }));
+}
+window.AG.selectParcelById = selectParcelById;
 
 // ── Map layers & interaction ─────────────────────────────────────────────────
 map.on('load', () => {
@@ -289,6 +376,25 @@ map.on('load', () => {
         0,
       ],
     },
+  });
+
+  // Search-selected highlight — drawn from real geometry (no tile feature id
+  // available when selecting by address), so it works regardless of tiles.
+  map.addSource('selected-parcel-geojson', {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features: [] },
+  });
+  map.addLayer({
+    id: 'selected-parcel-fill',
+    type: 'fill',
+    source: 'selected-parcel-geojson',
+    paint: { 'fill-color': '#e8a838', 'fill-opacity': 0.5 },
+  });
+  map.addLayer({
+    id: 'selected-parcel-outline',
+    type: 'line',
+    source: 'selected-parcel-geojson',
+    paint: { 'line-color': '#e8a838', 'line-width': 2 },
   });
 
   // ── Hover interaction ────────────────────────────────────────────────────
