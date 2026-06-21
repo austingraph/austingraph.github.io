@@ -1,6 +1,6 @@
 // austingraph.chat — Future Land Use parcel selector
-// Adds a "Future land use" section to the top Overlays menu
-// (#overlays-menu-content, built by maptools.js) that highlights parcels by
+// Adds a "Future land use" section to the right-side map-tools panel
+// (#map-tools-content, built by maptools.js) that highlights parcels by
 // future-land-use category and/or upzoning-candidate status. Parcels are
 // fetched live from Supabase (public.flum_select_geojson, server-simplified
 // geometry) and drawn as a highlight layer — no FLUM columns are required in
@@ -87,17 +87,20 @@
 
   // ── UI (appended into the top Overlays menu) ───────────────────────────────
   function buildUI() {
-    const content = document.getElementById('overlays-menu-content');
+    // Lives in the right-side map-tools panel (#map-tools-content), in the
+    // space the base map / overlay toggles used to occupy. Inserted at the top
+    // so it sits above the parcel filter (filters.js), which carries its own
+    // leading separator.
+    const content = document.getElementById('map-tools-content');
     if (!content) return;
 
-    const sep = document.createElement('hr');
-    sep.className = 'tools-panel-sep';
-    content.appendChild(sep);
+    const wrap = document.createElement('div');
+    wrap.className = 'flum-section';
 
     const h = document.createElement('div');
     h.className = 'tools-panel-heading';
     h.textContent = 'Future land use';
-    content.appendChild(h);
+    wrap.appendChild(h);
 
     // Upzoning candidates group toggle
     const upLbl = document.createElement('label');
@@ -108,21 +111,21 @@
     upSpan.textContent = 'Upzoning candidates';
     upLbl.appendChild(upCb);
     upLbl.appendChild(upSpan);
-    content.appendChild(upLbl);
+    wrap.appendChild(upLbl);
     upCb.addEventListener('change', function () { upzoningOnly = this.checked; refresh(); });
 
     const catHead = document.createElement('div');
     catHead.className = 'filter-subheading';
     catHead.textContent = 'By future land use category';
-    content.appendChild(catHead);
+    wrap.appendChild(catHead);
 
     listEl = document.createElement('div');
     listEl.className = 'filter-zoning-list';
-    content.appendChild(listEl);
+    wrap.appendChild(listEl);
 
     noteEl = document.createElement('p');
     noteEl.className = 'filter-note';
-    content.appendChild(noteEl);
+    wrap.appendChild(noteEl);
 
     const clearBtn = document.createElement('button');
     clearBtn.className = 'filter-clear';
@@ -134,8 +137,9 @@
       listEl.querySelectorAll('input[type=checkbox]').forEach((c) => { c.checked = false; });
       refresh();
     });
-    content.appendChild(clearBtn);
+    wrap.appendChild(clearBtn);
 
+    content.insertBefore(wrap, content.firstChild);
     populateCategories(upSpan);
   }
 
