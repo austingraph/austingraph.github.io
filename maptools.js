@@ -142,12 +142,15 @@
   // ── Right-side map tools panel ───────────────────────────────────────────────
 
   function initMapPanel() {
+    // Right-side slide-out panel — retained as the host for the parcel filter
+    // (filters.js injects into #map-tools-content). The base map + overlay
+    // toggles now live in the top "Overlays" hamburger menu built below.
     var panel = document.createElement("div");
     panel.id = "map-tools-panel";
 
     var tab = document.createElement("button");
     tab.id = "map-tools-tab";
-    tab.setAttribute("aria-label", "Toggle map tools");
+    tab.setAttribute("aria-label", "Toggle parcel filter");
     tab.innerHTML = "&#8249;"; // ‹
 
     var content = document.createElement("div");
@@ -162,11 +165,42 @@
       tab.innerHTML = open ? "&#8250;" : "&#8249;"; // › when open, ‹ when closed
     });
 
+    // ── Top "Overlays" hamburger menu (right of the address search bar) ───────
+    var menu = document.createElement("div");
+    menu.id = "overlays-menu";
+
+    var menuBtn = document.createElement("button");
+    menuBtn.id = "overlays-menu-btn";
+    menuBtn.setAttribute("aria-label", "Toggle overlays menu");
+    menuBtn.innerHTML = '<span class="overlays-burger">&#9776;</span><span>Overlays</span>';
+
+    var menuContent = document.createElement("div");
+    menuContent.id = "overlays-menu-content";
+    menuContent.hidden = true;
+
+    menu.appendChild(menuBtn);
+    menu.appendChild(menuContent);
+    document.body.appendChild(menu);
+
+    menuBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var open = menuContent.hidden;
+      menuContent.hidden = !open;
+      menuBtn.classList.toggle("open", open);
+    });
+    // Dismiss when clicking outside the menu.
+    document.addEventListener("click", function (e) {
+      if (!menu.contains(e.target)) {
+        menuContent.hidden = true;
+        menuBtn.classList.remove("open");
+      }
+    });
+
     function addHeading(text) {
       var h = document.createElement("div");
       h.className = "tools-panel-heading";
       h.textContent = text;
-      content.appendChild(h);
+      menuContent.appendChild(h);
     }
 
     function addCheckbox(labelText, onChange) {
@@ -178,7 +212,7 @@
       span.textContent = labelText;
       lbl.appendChild(cb);
       lbl.appendChild(span);
-      content.appendChild(lbl);
+      menuContent.appendChild(lbl);
       cb.addEventListener("change", onChange);
       return { cb: cb, span: span };
     }
@@ -208,7 +242,7 @@
     // Overlays section
     var sep = document.createElement("hr");
     sep.className = "tools-panel-sep";
-    content.appendChild(sep);
+    menuContent.appendChild(sep);
     addHeading("Overlays");
 
     OVERLAYS.forEach(function (ov, i) {
