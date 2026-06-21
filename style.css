@@ -132,7 +132,16 @@ body {
 .swatch-buildable { background: #4caf7d; opacity: 0.6; }
 .swatch-massing   { background: #e8a838; opacity: 0.8; }
 
-#env-status:empty { display: none; }
+#env-status:empty,
+#plan-status:empty,
+#plan-upzoning:empty { display: none; }
+
+/* Upzoning signal: intended future use outranks current zoning */
+.flag-upzoning {
+  color: #2e7d52;
+  font-style: normal;
+  font-weight: 600;
+}
 
 #panel footer {
   margin-top: auto;
