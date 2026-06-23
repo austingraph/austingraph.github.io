@@ -1,0 +1,64 @@
+name: Load TCAD appraisal roll
+
+# One-off / annual import of the Travis Central Appraisal District bulk
+# appraisal roll into public.parcels (financial columns). NOT scheduled — the
+# certified roll is published once a year, so this is run on demand from the
+# Actions tab.
+#
+# Usage (Actions tab → "Load TCAD appraisal roll" → Run workflow):
+#   1. First run with mode = inspect  → lists the files inside the ZIP and
+#      prints 3 sample rows, WITHOUT writing to the database. Confirms the
+#      parser is finding APPRAISAL_INFO.TXT / IMP_DET.TXT.
+#   2. Then run with mode = load      → full parse + upsert (~374k parcels).
+#
+# Requires the DATABASE_URL repo secret (Supabase session-pooler, service role)
+# — the same secret the nightly ingest workflow uses.
+
+on:
+  workflow_dispatch:
+    inputs:
+      year:
+        description: "Appraisal roll year"
+        type: choice
+        default: "2026"
+        options:
+          - "2026"
+          - "2025"
+      mode:
+        description: "inspect = list files only · dry-run = parse, no write · load = write to DB"
+        type: choice
+        default: "inspect"
+        options:
+          - "inspect"
+          - "dry-run"
+          - "load"
+
+concurrency:
+  group: load-appraisal
+  cancel-in-progress: false
+
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r scripts/ingest/requirements.txt
+
+      - name: Run loader
+        run: |
+          case "${{ inputs.mode }}" in
+            inspect) FLAG="--inspect" ;;
+            dry-run) FLAG="--dry-run" ;;
+            load)    FLAG="" ;;
+          esac
+          echo "Running: load_tcad_appraisal.py --year ${{ inputs.year }} $FLAG"
+          python scripts/ingest/load_tcad_appraisal.py --year "${{ inputs.year }}" $FLAG
