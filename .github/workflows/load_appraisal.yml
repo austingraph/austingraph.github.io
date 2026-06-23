@@ -27,11 +27,11 @@ on:
       mode:
         description: "inspect = list files only · dry-run = parse, no write · load = write to DB"
         type: choice
-        default: "inspect"
+        default: "load"
         options:
-          - "inspect"
-          - "dry-run"
           - "load"
+          - "dry-run"
+          - "inspect"
 
 concurrency:
   group: load-appraisal
