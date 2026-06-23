@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>austingraph</title>
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
-  <link rel="stylesheet" href="style.css?v=20260621a" />
+  <link rel="stylesheet" href="style.css?v=20260623a" />
 </head>
 <body>
   <div id="map"></div>
@@ -47,6 +47,23 @@
       </dl>
       <p id="plan-upzoning" class="panel-note"></p>
       <p id="plan-status" class="panel-note"></p>
+    </section>
+
+    <section>
+      <h2>Appraisal &amp; Tax</h2>
+      <dl>
+        <div><dt>Market value</dt><dd id="appr-market">—</dd></div>
+        <div><dt>Land value</dt><dd id="appr-land">—</dd></div>
+        <div><dt>Improvement value</dt><dd id="appr-impr">—</dd></div>
+        <div><dt>Assessed value</dt><dd id="appr-assessed">—</dd></div>
+        <div><dt>Exemptions</dt><dd id="appr-exemptions">—</dd></div>
+        <div><dt>Est. annual tax</dt><dd id="appr-tax">—</dd></div>
+        <div><dt>Year built</dt><dd id="appr-yr-built">—</dd></div>
+        <div><dt>Living area</dt><dd id="appr-living">—</dd></div>
+        <div><dt>Land $/sqft</dt><dd id="appr-land-psf">—</dd></div>
+        <div><dt>Owner</dt><dd id="appr-owner">—</dd></div>
+      </dl>
+      <p id="appr-status" class="panel-note"></p>
     </section>
 
     <section>
@@ -102,7 +119,7 @@
 
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <script src="https://unpkg.com/pmtiles@3.2.0/dist/pmtiles.js"></script>
-  <script src="app.js?v=20260617b"></script>
+  <script src="app.js?v=20260623a"></script>
   <script src="search.js?v=20260617"></script>
   <script src="envelope.js?v=20260617"></script>
   <script src="connections.js?v=20260613"></script>

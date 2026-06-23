@@ -122,6 +122,109 @@ const elPlanZone = document.getElementById('plan-zoning');
 const elUpzone   = document.getElementById('plan-upzoning');
 const elPlanSt   = document.getElementById('plan-status');
 
+const elApprMarket  = document.getElementById('appr-market');
+const elApprLand    = document.getElementById('appr-land');
+const elApprImpr    = document.getElementById('appr-impr');
+const elApprAssessed= document.getElementById('appr-assessed');
+const elApprExempt  = document.getElementById('appr-exemptions');
+const elApprTax     = document.getElementById('appr-tax');
+const elApprYrBuilt = document.getElementById('appr-yr-built');
+const elApprLiving  = document.getElementById('appr-living');
+const elApprLandPsf = document.getElementById('appr-land-psf');
+const elApprOwner   = document.getElementById('appr-owner');
+const elApprStatus  = document.getElementById('appr-status');
+
+// Approximate combined tax rate for Austin-proper parcels (2025 rates).
+// Travis County 0.3758 + City of Austin 0.5240 + AISD 0.9252 + ACC+Health ~0.18 ≈ 2.00%.
+// Actual rate varies by school district, MUD, and special districts.
+// TODO: per-entity rate lookup for accurate bill
+const APPROX_TAX_RATE = 0.020;
+
+const EXEMPTION_LABELS = {
+  HS: 'Homestead', OV65: 'Over-65 freeze', DP: 'Disabled person',
+  VET: 'Veteran', AG: 'Ag use', AB: 'Abatement', EX: 'Total exemption',
+};
+
+function fmtUSD(n) {
+  if (n == null || n === 0) return null;
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
+}
+
+function renderAppraisal(row) {
+  const dash = '—';
+  if (!row || row.appr_market_val == null) {
+    [elApprMarket, elApprLand, elApprImpr, elApprAssessed,
+      elApprExempt, elApprTax, elApprYrBuilt, elApprLiving,
+      elApprLandPsf, elApprOwner].forEach((el) => { el.textContent = dash; });
+    elApprStatus.textContent = row
+      ? 'No appraisal data loaded yet — run scripts/ingest/load_tcad_appraisal.py'
+      : '';
+    return;
+  }
+
+  elApprMarket.textContent  = fmtUSD(row.appr_market_val) || dash;
+  elApprLand.textContent    = fmtUSD(row.appr_land_val)   || dash;
+  elApprImpr.textContent    = fmtUSD(row.appr_impr_val)   || dash;
+
+  // Assessed value — flag homestead cap if meaningfully below market
+  const assessed = row.appr_assessed_val;
+  const market   = row.appr_market_val;
+  if (assessed != null && market != null && assessed < market * 0.95) {
+    elApprAssessed.textContent = `${fmtUSD(assessed)} (homestead cap applied)`;
+  } else {
+    elApprAssessed.textContent = fmtUSD(assessed) || dash;
+  }
+
+  // Exemptions
+  const codes = Array.isArray(row.appr_exemptions) ? row.appr_exemptions : [];
+  elApprExempt.textContent = codes.length
+    ? codes.map((c) => EXEMPTION_LABELS[c] || c).join(', ')
+    : 'None';
+
+  // Estimated tax — based on assessed value, ~2% rate
+  const taxBase = assessed || market;
+  if (taxBase) {
+    const est = Math.round(taxBase * APPROX_TAX_RATE);
+    elApprTax.textContent = `${fmtUSD(est)}/yr (est. ~2%, Austin proper)`;
+  } else {
+    elApprTax.textContent = dash;
+  }
+
+  elApprYrBuilt.textContent = row.appr_yr_built || dash;
+
+  if (row.appr_living_sqft) {
+    elApprLiving.textContent = `${row.appr_living_sqft.toLocaleString()} sq ft`;
+  } else {
+    elApprLiving.textContent = dash;
+  }
+
+  // Land $/sqft — land_val ÷ parcel_sqft
+  const acres = parseFloat(window.AG?.lastPanelData?.stats?.areaM2 * 10.7639 / 43560 || 0)
+              || parseFloat(0);
+  // Use TCAD acres from metadata if geometry stats not available
+  const tcadAcres = parseFloat(
+    document.getElementById('meta-acres')?.textContent || '0'
+  );
+  const landAcres = tcadAcres > 0 ? tcadAcres : (window.AG?.lastPanelData?.stats?.areaM2 || 0) / 4046.86;
+  if (row.appr_land_val && landAcres > 0) {
+    const psf = row.appr_land_val / (landAcres * 43560);
+    elApprLandPsf.textContent = `$${psf.toFixed(2)}/sqft`;
+  } else {
+    elApprLandPsf.textContent = dash;
+  }
+
+  // Owner — flag out-of-state
+  let ownerText = row.appr_owner_name || dash;
+  if (row.appr_owner_state && row.appr_owner_state !== 'TX') {
+    ownerText += ` (out-of-state: ${row.appr_owner_state})`;
+  }
+  elApprOwner.textContent = ownerText;
+
+  elApprStatus.textContent = row.appr_data_yr
+    ? `Source: TCAD ${row.appr_data_yr} appraisal roll`
+    : '';
+}
+
 let metaFetchToken = 0;
 
 function renderPlanning(row) {
@@ -165,8 +268,17 @@ function openPanel(parcelId, geometry) {
   elFlum.textContent = elPlanZone.textContent = '—';
   elUpzone.textContent = elPlanSt.textContent = '';
 
+  // Reset appraisal fields
+  [elApprMarket, elApprLand, elApprImpr, elApprAssessed,
+    elApprExempt, elApprTax, elApprYrBuilt, elApprLiving,
+    elApprLandPsf, elApprOwner].forEach((el) => { el.textContent = '—'; });
+  elApprStatus.textContent = '';
+
   const token = ++metaFetchToken;
-  const cols = 'metadata,flum_label,flum_code,zoning_ztype,zoning_base,upzoning_gap,upzoning_flag';
+  const apprCols = 'appr_market_val,appr_land_val,appr_impr_val,appr_assessed_val,'
+    + 'appr_taxable_val,appr_exemptions,appr_yr_built,appr_living_sqft,'
+    + 'appr_owner_name,appr_owner_state,appr_data_yr';
+  const cols = `metadata,flum_label,flum_code,zoning_ztype,zoning_base,upzoning_gap,upzoning_flag,${apprCols}`;
   fetch(`${SUPABASE_URL}/rest/v1/parcels?parcel_id=eq.${encodeURIComponent(parcelId)}&select=${cols}`, {
     headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
   })
@@ -185,11 +297,13 @@ function openPanel(parcelId, geometry) {
         elMetaSt.textContent = 'No property record in database yet.';
       }
       renderPlanning(row);
+      renderAppraisal(row);
     })
     .catch(() => {
       if (token !== metaFetchToken) return;
       elMetaSt.textContent = 'Could not load property record.';
       elPlanSt.textContent = 'Could not load planning context.';
+      elApprStatus.textContent = 'Could not load appraisal data.';
     });
 
   panel.classList.add('open');
