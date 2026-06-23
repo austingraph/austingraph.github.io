@@ -435,9 +435,12 @@
     if (impr && row.appr_living_sqft) rows.push(['Building $/sqft', `$${Math.round(impr / row.appr_living_sqft).toLocaleString()}`]);
     if (row.appr_yr_built)     rows.push(['Year built', `${row.appr_yr_built} (${thisYear - row.appr_yr_built} yrs old)`]);
     if (row.appr_living_sqft)  rows.push(['Living area', `${row.appr_living_sqft.toLocaleString()} sq ft`]);
-    let owner = row.appr_owner_name || '—';
-    if (row.appr_owner_state && row.appr_owner_state !== 'TX') owner += ` (out-of-state: ${row.appr_owner_state})`;
-    rows.push(['Owner', owner]);
+    // Owner name intentionally withheld; available from the TCAD appraisal roll.
+    rows.push(['Owner', 'Available from TCAD appraisal roll']);
+    const ownerState = row.appr_owner_state;
+    if (ownerState) {
+      rows.push(['Owner location', ownerState !== 'TX' ? `Out-of-state (${ownerState})` : `In-state (${ownerState})`]);
+    }
     if (row.appr_data_yr) rows.push(['Source', `TCAD ${row.appr_data_yr} appraisal roll`]);
 
     return makeSection('Appraisal & Tax', rows);

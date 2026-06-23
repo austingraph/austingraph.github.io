@@ -180,10 +180,11 @@ function renderAppraisal(row) {
     ? `${fmtUSD(Math.round(taxBase * APPROX_TAX_RATE))}/yr (est. ~2%)`
     : dash;
 
-  // Owner — flag out-of-state
-  let ownerText = row.appr_owner_name || dash;
+  // Owner — name is intentionally not displayed; available from TCAD on request.
+  // The out-of-state signal (state code, not a name) is kept as an investor cue.
+  let ownerText = 'Available from TCAD appraisal roll';
   if (row.appr_owner_state && row.appr_owner_state !== 'TX') {
-    ownerText += ` (out-of-state: ${row.appr_owner_state})`;
+    ownerText += ` (owner out-of-state: ${row.appr_owner_state})`;
   }
   elApprOwner.textContent = ownerText;
 
@@ -241,9 +242,12 @@ function openPanel(parcelId, geometry) {
   elApprStatus.textContent = '';
 
   const token = ++metaFetchToken;
+  // appr_owner_name is intentionally NOT requested — the owner name stays in the
+  // database (for case-by-case lookup in Supabase) and never reaches the browser.
+  // appr_owner_state is kept: it's a derived signal (state code), not a name.
   const apprCols = 'appr_market_val,appr_land_val,appr_impr_val,appr_assessed_val,'
     + 'appr_taxable_val,appr_exemptions,appr_yr_built,appr_living_sqft,'
-    + 'appr_owner_name,appr_owner_state,appr_data_yr';
+    + 'appr_owner_state,appr_data_yr';
   const cols = `metadata,flum_label,flum_code,zoning_ztype,zoning_base,upzoning_gap,upzoning_flag,${apprCols}`;
   fetch(`${SUPABASE_URL}/rest/v1/parcels?parcel_id=eq.${encodeURIComponent(parcelId)}&select=${cols}`, {
     headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
