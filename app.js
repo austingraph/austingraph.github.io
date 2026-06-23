@@ -122,15 +122,10 @@ const elPlanZone = document.getElementById('plan-zoning');
 const elUpzone   = document.getElementById('plan-upzoning');
 const elPlanSt   = document.getElementById('plan-status');
 
+// Panel shows a 4-field summary; the full appraisal set lives in the Parcel Report.
 const elApprMarket  = document.getElementById('appr-market');
-const elApprLand    = document.getElementById('appr-land');
-const elApprImpr    = document.getElementById('appr-impr');
 const elApprAssessed= document.getElementById('appr-assessed');
-const elApprExempt  = document.getElementById('appr-exemptions');
 const elApprTax     = document.getElementById('appr-tax');
-const elApprYrBuilt = document.getElementById('appr-yr-built');
-const elApprLiving  = document.getElementById('appr-living');
-const elApprLandPsf = document.getElementById('appr-land-psf');
 const elApprOwner   = document.getElementById('appr-owner');
 const elApprStatus  = document.getElementById('appr-status');
 
@@ -145,6 +140,10 @@ const EXEMPTION_LABELS = {
   VET: 'Veteran', AG: 'Ag use', AB: 'Abatement', EX: 'Total exemption',
 };
 
+// Shared with report.js (full appraisal block reuses the tax rate + labels).
+window.AG.APPROX_TAX_RATE = APPROX_TAX_RATE;
+window.AG.EXEMPTION_LABELS = EXEMPTION_LABELS;
+
 function fmtUSD(n) {
   if (n == null || n === 0) return null;
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
@@ -152,66 +151,34 @@ function fmtUSD(n) {
 
 function renderAppraisal(row) {
   const dash = '—';
+  // Stash the full DB row so the Parcel Report can build the complete
+  // appraisal/tax block + derived investor signals without re-fetching.
+  if (window.AG.lastPanelData) window.AG.lastPanelData.dbRow = row || null;
+
   if (!row || row.appr_market_val == null) {
-    [elApprMarket, elApprLand, elApprImpr, elApprAssessed,
-      elApprExempt, elApprTax, elApprYrBuilt, elApprLiving,
-      elApprLandPsf, elApprOwner].forEach((el) => { el.textContent = dash; });
-    elApprStatus.textContent = row
-      ? 'No appraisal data loaded yet — run scripts/ingest/load_tcad_appraisal.py'
-      : '';
+    [elApprMarket, elApprAssessed, elApprTax, elApprOwner]
+      .forEach((el) => { el.textContent = dash; });
+    elApprStatus.textContent = row ? 'No appraisal data for this parcel.' : '';
     return;
   }
 
-  elApprMarket.textContent  = fmtUSD(row.appr_market_val) || dash;
-  elApprLand.textContent    = fmtUSD(row.appr_land_val)   || dash;
-  elApprImpr.textContent    = fmtUSD(row.appr_impr_val)   || dash;
-
-  // Assessed value — flag homestead cap if meaningfully below market
   const assessed = row.appr_assessed_val;
   const market   = row.appr_market_val;
+
+  elApprMarket.textContent = fmtUSD(market) || dash;
+
+  // Assessed value — flag homestead cap if meaningfully below market
   if (assessed != null && market != null && assessed < market * 0.95) {
-    elApprAssessed.textContent = `${fmtUSD(assessed)} (homestead cap applied)`;
+    elApprAssessed.textContent = `${fmtUSD(assessed)} (homestead cap)`;
   } else {
     elApprAssessed.textContent = fmtUSD(assessed) || dash;
   }
 
-  // Exemptions
-  const codes = Array.isArray(row.appr_exemptions) ? row.appr_exemptions : [];
-  elApprExempt.textContent = codes.length
-    ? codes.map((c) => EXEMPTION_LABELS[c] || c).join(', ')
-    : 'None';
-
   // Estimated tax — based on assessed value, ~2% rate
   const taxBase = assessed || market;
-  if (taxBase) {
-    const est = Math.round(taxBase * APPROX_TAX_RATE);
-    elApprTax.textContent = `${fmtUSD(est)}/yr (est. ~2%, Austin proper)`;
-  } else {
-    elApprTax.textContent = dash;
-  }
-
-  elApprYrBuilt.textContent = row.appr_yr_built || dash;
-
-  if (row.appr_living_sqft) {
-    elApprLiving.textContent = `${row.appr_living_sqft.toLocaleString()} sq ft`;
-  } else {
-    elApprLiving.textContent = dash;
-  }
-
-  // Land $/sqft — land_val ÷ parcel_sqft
-  const acres = parseFloat(window.AG?.lastPanelData?.stats?.areaM2 * 10.7639 / 43560 || 0)
-              || parseFloat(0);
-  // Use TCAD acres from metadata if geometry stats not available
-  const tcadAcres = parseFloat(
-    document.getElementById('meta-acres')?.textContent || '0'
-  );
-  const landAcres = tcadAcres > 0 ? tcadAcres : (window.AG?.lastPanelData?.stats?.areaM2 || 0) / 4046.86;
-  if (row.appr_land_val && landAcres > 0) {
-    const psf = row.appr_land_val / (landAcres * 43560);
-    elApprLandPsf.textContent = `$${psf.toFixed(2)}/sqft`;
-  } else {
-    elApprLandPsf.textContent = dash;
-  }
+  elApprTax.textContent = taxBase
+    ? `${fmtUSD(Math.round(taxBase * APPROX_TAX_RATE))}/yr (est. ~2%)`
+    : dash;
 
   // Owner — flag out-of-state
   let ownerText = row.appr_owner_name || dash;
@@ -268,10 +235,9 @@ function openPanel(parcelId, geometry) {
   elFlum.textContent = elPlanZone.textContent = '—';
   elUpzone.textContent = elPlanSt.textContent = '';
 
-  // Reset appraisal fields
-  [elApprMarket, elApprLand, elApprImpr, elApprAssessed,
-    elApprExempt, elApprTax, elApprYrBuilt, elApprLiving,
-    elApprLandPsf, elApprOwner].forEach((el) => { el.textContent = '—'; });
+  // Reset appraisal summary fields
+  [elApprMarket, elApprAssessed, elApprTax, elApprOwner]
+    .forEach((el) => { el.textContent = '—'; });
   elApprStatus.textContent = '';
 
   const token = ++metaFetchToken;

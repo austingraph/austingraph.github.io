@@ -53,17 +53,12 @@
       <h2>Appraisal &amp; Tax</h2>
       <dl>
         <div><dt>Market value</dt><dd id="appr-market">—</dd></div>
-        <div><dt>Land value</dt><dd id="appr-land">—</dd></div>
-        <div><dt>Improvement value</dt><dd id="appr-impr">—</dd></div>
         <div><dt>Assessed value</dt><dd id="appr-assessed">—</dd></div>
-        <div><dt>Exemptions</dt><dd id="appr-exemptions">—</dd></div>
         <div><dt>Est. annual tax</dt><dd id="appr-tax">—</dd></div>
-        <div><dt>Year built</dt><dd id="appr-yr-built">—</dd></div>
-        <div><dt>Living area</dt><dd id="appr-living">—</dd></div>
-        <div><dt>Land $/sqft</dt><dd id="appr-land-psf">—</dd></div>
         <div><dt>Owner</dt><dd id="appr-owner">—</dd></div>
       </dl>
       <p id="appr-status" class="panel-note"></p>
+      <p class="panel-note">Open the <strong>Parcel Report</strong> for full appraisal, tax &amp; development feasibility.</p>
     </section>
 
     <section>
@@ -93,6 +88,12 @@
       <div id="conn-permits" class="conn-group"></div>
     </section>
 
+    <section>
+      <h2 id="panel-demo-title">Neighborhood profile</h2>
+      <dl id="panel-demo"></dl>
+      <p id="panel-demo-status" class="panel-note">Select a parcel to see neighborhood data.</p>
+    </section>
+
     <footer>
       <a id="panel-tcad-link" href="#" target="_blank" rel="noopener">View on TCAD &rarr;</a>
     </footer>
@@ -119,12 +120,13 @@
 
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <script src="https://unpkg.com/pmtiles@3.2.0/dist/pmtiles.js"></script>
-  <script src="app.js?v=20260623a"></script>
+  <script src="app.js?v=20260623b"></script>
   <script src="search.js?v=20260617"></script>
   <script src="envelope.js?v=20260617"></script>
   <script src="connections.js?v=20260613"></script>
+  <script src="neighborhood.js?v=20260623a"></script>
   <script src="feasibility.js?v=20260617c"></script>
-  <script src="report.js?v=20260618a"></script>
+  <script src="report.js?v=20260623b"></script>
   <script defer src="https://unpkg.com/maplibre-contour@0.0.5/dist/index.min.js"></script>
   <script defer src="https://unpkg.com/terra-draw/dist/terra-draw.umd.js"></script>
   <script defer src="https://unpkg.com/terra-draw-maplibre-gl-adapter/dist/terra-draw-maplibre-gl-adapter.umd.js"></script>

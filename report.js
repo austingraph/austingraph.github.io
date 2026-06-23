@@ -382,32 +382,57 @@
     dataEl.appendChild(feasCol);
     dataEl.appendChild(detailCol);
 
-    const s = data.stats;
-    detailCol.appendChild(makeSection('Dimensions', [
-      ['Area',      fmtArea(s.areaM2)],
-      ['Perimeter', fmtFeet(s.perimM)],
-      ['Width',     fmtFeet(s.widthM)],
-      ['Height',    fmtFeet(s.heightM)],
-    ]));
-    detailCol.appendChild(makeSection('Development potential', [
-      ['Capacity',       el('env-capacity')],
-      ['Zoning',         el('env-zoning')],
-      ['Setbacks',       el('env-setbacks')],
-      ['Buildable ft²',  el('env-buildable')],
-      ['Max FAR',        el('env-far')],
-      ['Impervious cap', el('env-impervious')],
-      ['Max height',     el('env-height')],
-      ['Max units',      el('env-units')],
-    ]));
-    const casesEl   = document.getElementById('conn-cases');
-    const permitsEl = document.getElementById('conn-permits');
-    const firstCase  = casesEl?.querySelector('.conn-title')?.textContent || '—';
-    const caseStatus = casesEl?.querySelector('.conn-badge')?.textContent  || '';
-    const permitCount = permitsEl?.querySelectorAll('.conn-item').length ?? 0;
-    detailCol.appendChild(makeSection('Civic connections', [
-      ['Latest case',  firstCase + (caseStatus ? ` (${caseStatus})` : '')],
-      ['Permit count', permitCount > 0 ? String(permitCount) : '—'],
-    ]));
+    // Dimensions, Development potential, Civic connections and Neighborhood
+    // profile now live in the left panel. The report is the financial surface:
+    // full appraisal/tax + derived investor signals (right), feasibility (left).
+    detailCol.appendChild(buildAppraisalSection(data));
+  }
+
+  // Full appraisal/tax block + derived investor signals, from the row stashed by
+  // app.js (window.AG.lastPanelData.dbRow). Mirrors the panel summary but complete.
+  function buildAppraisalSection(data) {
+    const row     = data.dbRow || {};
+    const labels  = window.AG.EXEMPTION_LABELS || {};
+    const taxRate = window.AG.APPROX_TAX_RATE || 0.02;
+    const usd = (n) => (n != null && n !== 0) ? '$' + Math.round(n).toLocaleString() : '—';
+
+    const market   = row.appr_market_val;
+    const land     = row.appr_land_val;
+    const impr     = row.appr_impr_val;
+    const assessed = row.appr_assessed_val;
+
+    if (market == null) {
+      return makeSection('Appraisal & Tax', [['Status', 'No appraisal data for this parcel.']]);
+    }
+
+    const tcadAcres = parseFloat(row.metadata?.tcad_acres) || 0;
+    const lotSqft   = tcadAcres > 0 ? tcadAcres * 43560 : (data.stats?.areaM2 || 0) * 10.7639104;
+    const taxBase   = assessed || market;
+    const estTax    = Math.round(taxBase * taxRate);
+    const thisYear  = new Date().getFullYear();
+    const codes     = Array.isArray(row.appr_exemptions) ? row.appr_exemptions : [];
+
+    const rows = [];
+    rows.push(['Market value',      usd(market)]);
+    rows.push(['Land value',        usd(land)]);
+    rows.push(['Improvement value', usd(impr)]);
+    rows.push(['Assessed value',
+      (assessed != null && assessed < market * 0.95) ? `${usd(assessed)} (homestead cap)` : usd(assessed)]);
+    if (row.appr_taxable_val != null) rows.push(['Taxable value', usd(row.appr_taxable_val)]);
+    rows.push(['Exemptions', codes.length ? codes.map((c) => labels[c] || c).join(', ') : 'None']);
+    rows.push(['Est. annual tax', `${usd(estTax)}/yr (~${(taxRate * 100).toFixed(1)}%, Austin proper)`]);
+    rows.push(['Tax as % of market', `${(estTax / market * 100).toFixed(2)}%`]);
+    if (land && market)        rows.push(['Land share of value', `${Math.round(land / market * 100)}% (redevelopment signal)`]);
+    if (land && lotSqft > 0)   rows.push(['Land $/sqft', `$${(land / lotSqft).toFixed(2)}`]);
+    if (impr && row.appr_living_sqft) rows.push(['Building $/sqft', `$${Math.round(impr / row.appr_living_sqft).toLocaleString()}`]);
+    if (row.appr_yr_built)     rows.push(['Year built', `${row.appr_yr_built} (${thisYear - row.appr_yr_built} yrs old)`]);
+    if (row.appr_living_sqft)  rows.push(['Living area', `${row.appr_living_sqft.toLocaleString()} sq ft`]);
+    let owner = row.appr_owner_name || '—';
+    if (row.appr_owner_state && row.appr_owner_state !== 'TX') owner += ` (out-of-state: ${row.appr_owner_state})`;
+    rows.push(['Owner', owner]);
+    if (row.appr_data_yr) rows.push(['Source', `TCAD ${row.appr_data_yr} appraisal roll`]);
+
+    return makeSection('Appraisal & Tax', rows);
   }
 
   function buildFooter(data) {
@@ -420,14 +445,16 @@
       `<span><a href="${tcadUrl}" target="_blank" rel="noopener" style="color:#b8860b">TCAD record →</a></span>`;
   }
 
-  // ── Demographics (zoning-contextual) ─────────────────────────────────────────
-  function fetchDemographics(parcelId, token) {
-    const detailCol = document.getElementById('report-detail-col') || dataEl;
-    const noteEl = document.createElement('p');
-    noteEl.className = 'report-env-note';
-    noteEl.textContent = 'Loading neighborhood profile…';
-    detailCol.appendChild(noteEl);
-
+  // ── Seed feasibility with demographics (for the rent assumption) ─────────────
+  // Neighborhood profile renders in the panel (neighborhood.js); the report only
+  // needs the demographics object to seed the pro-forma's default rent. Reuse the
+  // value neighborhood.js already cached on lastPanelData; fall back to a fetch.
+  function seedFeasibility(parcelId, token) {
+    const pd = window.AG?.lastPanelData;
+    if (pd && 'demographics' in pd) {
+      appendFeasibility(parcelId, pd.demographics);
+      return;
+    }
     fetch(`${window.AG.SUPABASE_URL}/rest/v1/rpc/parcel_demographics`, {
       method: 'POST',
       headers: {
@@ -441,22 +468,10 @@
       .then((d) => {
         if (token !== demoCtr) return;
         if (!modal.classList.contains('open')) return;
-        noteEl.remove();
-        if (d?.status === 'ok') {
-          detailCol.appendChild(buildDemographicsSection(d));
-          // Feasibility section uses median rent from demographics
-          appendFeasibility(parcelId, d);
-        } else if (d?.status === 'no_census') {
-          const msg = document.createElement('p');
-          msg.className = 'report-env-note';
-          msg.textContent = 'Census data not available for this parcel (outside City limits or county parcel).';
-          detailCol.appendChild(msg);
-          appendFeasibility(parcelId, null);
-        }
+        appendFeasibility(parcelId, d?.status === 'ok' ? d : null);
       })
       .catch(() => {
         if (token !== demoCtr) return;
-        noteEl.remove();
         appendFeasibility(parcelId, null);
       });
   }
@@ -470,74 +485,6 @@
         if (!modal.classList.contains('open')) return;
         feasCol.appendChild(sec);
       });
-  }
-
-  function fmt$(n)  { return n != null ? `$${Number(n).toLocaleString()}` : '—'; }
-  function fmtPct(n){ return n != null ? `${n}%` : '—'; }
-  function fmtN(n)  { return n != null ? Number(n).toLocaleString() : '—'; }
-
-  function buildDemographicsSection(p) {
-    const lensConfig = {
-      residential: {
-        title: 'Neighborhood profile',
-        rows: [
-          ['Population (block)',  fmtN(p.total_pop)],
-          ['Housing units',       fmtN(p.housing_units)],
-          ['Owner occupied',      fmtPct(p.owner_pct)],
-          ['Renter occupied',     fmtPct(p.renter_pct)],
-          ['Median income',       fmt$(p.median_hh_income)],
-          ['Median age',          p.median_age != null ? `${p.median_age} yrs` : '—'],
-          ['Youth (<18)',         fmtPct(p.youth_pct)],
-          ['Seniors (65+)',       fmtPct(p.senior_pct)],
-          ['Hispanic/Latino',     fmtPct(p.hispanic_pct)],
-          ['Black/African Am.',   fmtPct(p.black_pct)],
-          ['White (non-Hisp.)',   fmtPct(p.white_pct)],
-          ['Data source',         `ACS ${p.acs_vintage} 5-yr`],
-        ],
-      },
-      rental: {
-        title: 'Renter market profile',
-        rows: [
-          ['Renter share',        fmtPct(p.renter_pct)],
-          ['Median gross rent',   p.median_gross_rent != null ? `${fmt$(p.median_gross_rent)}/mo` : '—'],
-          ['Cost burdened (30%+)',fmtPct(p.cost_burden_pct)],
-          ['Median income',       fmt$(p.median_hh_income)],
-          ['Median age',          p.median_age != null ? `${p.median_age} yrs` : '—'],
-          ['Prime-age (25–64)',   fmtPct(p.prime_pct)],
-          ['Vacancy rate',        p.occupied_units != null && p.housing_units
-            ? fmtPct(Math.round(100 - 100 * p.occupied_units / p.housing_units)) : '—'],
-          ['Population (block)',  fmtN(p.total_pop)],
-          ['Data source',         `ACS ${p.acs_vintage} 5-yr`],
-        ],
-      },
-      commercial: {
-        title: 'Trade area profile',
-        rows: [
-          ['Population (block)',  fmtN(p.total_pop)],
-          ['Median income',       fmt$(p.median_hh_income)],
-          ['Prime consumers (25–64)', fmtPct(p.prime_pct)],
-          ['Owner share',         fmtPct(p.owner_pct)],
-          ['Transit / walk / bike', fmtPct(p.transit_pct)],
-          ['Hispanic/Latino',     fmtPct(p.hispanic_pct)],
-          ['Data source',         `ACS ${p.acs_vintage} 5-yr`],
-        ],
-      },
-      workforce: {
-        title: 'Workforce context',
-        rows: [
-          ['Population (block)',  fmtN(p.total_pop)],
-          ['Median income',       fmt$(p.median_hh_income)],
-          ['Transit commuters',   fmtPct(p.transit_pct)],
-          ['Owner / renter split', p.owner_pct != null
-            ? `${p.owner_pct}% / ${p.renter_pct}%` : '—'],
-          ['Median age',          p.median_age != null ? `${p.median_age} yrs` : '—'],
-          ['Data source',         `ACS ${p.acs_vintage} 5-yr`],
-        ],
-      },
-    };
-
-    const cfg = lensConfig[p.lens] || lensConfig.residential;
-    return makeSection(cfg.title, cfg.rows);
   }
 
   // ── Open / close ──────────────────────────────────────────────────────────────
@@ -562,7 +509,7 @@
     buildFooter(data);
 
     const demoToken = ++demoCtr;
-    fetchDemographics(data.parcelId, demoToken);
+    seedFeasibility(data.parcelId, demoToken);
 
     pendingGeom = data.geometry;
 
