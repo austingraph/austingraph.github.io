@@ -108,9 +108,11 @@
   // ── DOM helpers ───────────────────────────────────────────────────────────
   function row(label, value, opts = {}) {
     const div = document.createElement('div');
+    const isInput = opts.node && opts.node.tagName === 'INPUT';
     div.className = 'report-row' + (opts.strong ? ' report-row--strong' : '') +
       (opts.indent ? ' report-row--indent' : '') +
-      (opts.sep ? ' report-row--sep' : '');
+      (opts.sep ? ' report-row--sep' : '') +
+      (isInput ? ' report-row--input' : '');
     const dt = document.createElement('dt');
     dt.textContent = label;
     const dd = document.createElement('dd');
@@ -157,6 +159,33 @@
     const mode = state.mode || 'build';
     const isHold = mode === 'hold';
     const isResidual = mode === 'residual';
+
+    // ── Result banner (plain-language headline for the active scenario) ──
+    let bigLabel, bigVal, subText, sign;
+    if (isResidual) {
+      bigLabel = 'You could pay up to';
+      bigVal   = fmt$(c.residualLand);
+      subText  = `for the land to earn a ${fmtPct(state.targetRoc != null ? state.targetRoc : 0.15)} return on cost`;
+      sign     = c.residualLand;
+    } else if (isHold) {
+      bigLabel = 'Annual income (NOI)';
+      bigVal   = fmt$(c.noi);
+      subText  = `${fmtPct(c.yieldUnlev)} yield on current value`;
+      sign     = c.noi;
+    } else {
+      bigLabel = 'Estimated profit';
+      bigVal   = fmt$(c.profit);
+      subText  = `${fmtPct(c.retOnCost)} return on cost · ${fmtPct(c.retOnEquity)} on equity`;
+      sign     = c.profit;
+    }
+    const banner = document.createElement('div');
+    banner.className = 'feasibility-result ' +
+      (sign > 0 ? 'feasibility-result--pos' : sign < 0 ? 'feasibility-result--neg' : 'feasibility-result--neutral');
+    const bL = document.createElement('div'); bL.className = 'feasibility-result-label'; bL.textContent = bigLabel;
+    const bV = document.createElement('div'); bV.className = 'feasibility-result-value'; bV.textContent = bigVal;
+    const bS = document.createElement('div'); bS.className = 'feasibility-result-sub'; bS.textContent = subText;
+    banner.appendChild(bL); banner.appendChild(bV); banner.appendChild(bS);
+    container.appendChild(banner);
 
     // ── Site summary ──
     const { wrap: siteSec, dl: siteDl } = dlSection('Site');
@@ -364,6 +393,12 @@
       { key: 'hold',     label: 'Hold as-is' },
       { key: 'residual', label: 'Residual land' },
     ];
+    const SCEN_DESC = {
+      by_right: 'Tear down and rebuild what the zoning allows by right. Land basis = TCAD land value.',
+      max_home: 'Build the most units the lot allows (including HOME rules), at the densest building type.',
+      hold:     'Keep and rent the existing building — no construction. Shows current income and yield on today’s value.',
+      residual: 'Works backwards: the most you could pay for the land and still hit your target return.',
+    };
 
     function applyScenario(key) {
       state.scenario = key;
@@ -413,6 +448,15 @@
     typoLabel.textContent = 'Building type:';
     typoWrap.appendChild(typoLabel);
 
+    // Plain-language description of the selected scenario.
+    const scenDesc = document.createElement('p');
+    scenDesc.className = 'feasibility-scen-desc';
+
+    // Editable-cells legend.
+    const legend = document.createElement('p');
+    legend.className = 'feasibility-legend';
+    legend.innerHTML = '<b>Tinted cells</b> are editable — change any assumption to update the numbers.';
+
     const contentDiv = document.createElement('div');
 
     function syncChrome() {
@@ -423,6 +467,7 @@
         b.classList.toggle('active', b.dataset.typo === state.typology.key);
       });
       typoWrap.style.display = state.mode === 'hold' ? 'none' : '';
+      scenDesc.textContent = SCEN_DESC[state.scenario] || '';
     }
 
     SCENARIOS.forEach(sc => {
@@ -452,7 +497,9 @@
     });
 
     outer.appendChild(scenWrap);
+    outer.appendChild(scenDesc);
     outer.appendChild(typoWrap);
+    outer.appendChild(legend);
     outer.appendChild(contentDiv);
     syncChrome();
     render(contentDiv, state);

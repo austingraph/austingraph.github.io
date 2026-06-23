@@ -640,22 +640,18 @@ body {
   margin-bottom: 16px;
 }
 
+/* Single column: Appraisal & Tax (facts) reads first, then the feasibility ledger. */
 #report-data {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 16px;
   margin-bottom: 16px;
-  align-items: start;
 }
-/* Left column = feasibility (read first); right column = parcel details. */
 .report-col {
   display: flex;
   flex-direction: column;
   gap: 16px;
   min-width: 0;
-}
-@media (max-width: 620px) {
-  #report-data { grid-template-columns: 1fr; }
 }
 .report-section {
   background: #f7f7f8;
@@ -718,7 +714,11 @@ body {
 
 /* ── Feasibility section ────────────────────────────────────────────────── */
 .feasibility-section {
-  margin-top: 12px;
+  margin-top: 4px;
+  background: #fff;
+  border: 1px solid #e6e6e6;
+  border-radius: 8px;
+  padding: 14px 16px;
 }
 .feasibility-typo-selector {
   display: flex;
@@ -765,20 +765,23 @@ body {
 .report-row--strong dt,
 .report-row--strong dd { font-weight: 600; color: #1a1a1a; }
 .report-row--sep { border-top: 1px solid #e8e8e8; padding-top: 4px; margin-top: 4px; }
+/* Editable "input cell" — tinted so users see what they can change. */
 .feasibility-input {
-  width: 90px;
-  padding: 2px 6px;
-  border: 1px solid #ccc;
+  width: 108px;
+  padding: 3px 7px;
+  border: 1px solid #cdb978;
   border-radius: 4px;
   font-size: 13px;
   text-align: right;
-  background: #fafafa;
+  background: #fffdf2;
   color: #222;
+  font-variant-numeric: tabular-nums;
 }
 .feasibility-input:focus {
   outline: none;
   border-color: #b8860b;
   background: #fff;
+  box-shadow: 0 0 0 2px rgba(184, 134, 11, 0.15);
 }
 .feasibility-toggle {
   display: flex;
@@ -806,6 +809,84 @@ body {
   border-top: 1px solid #eee;
   padding-top: 6px;
 }
+
+/* Plain-language scenario description + editable-cell legend */
+.feasibility-scen-desc {
+  font-size: 12.5px;
+  color: #555;
+  line-height: 1.45;
+  margin: 2px 0 10px;
+}
+.feasibility-legend {
+  font-size: 11.5px;
+  color: #8a8a8a;
+  margin: 0 0 10px;
+}
+.feasibility-legend b { color: #9a7d1e; }
+
+/* Result banner — the plain-language headline answer */
+.feasibility-result {
+  border: 1px solid #e0e0e0;
+  background: #f4f6f8;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin: 4px 0 16px;
+  text-align: center;
+}
+.feasibility-result-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: #777;
+}
+.feasibility-result-value {
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.1;
+  margin: 4px 0 2px;
+  font-variant-numeric: tabular-nums;
+  color: #1f4e79;
+}
+.feasibility-result-sub { font-size: 12.5px; color: #666; }
+.feasibility-result--pos { background: #eef7f0; border-color: #cfe8d6; }
+.feasibility-result--pos .feasibility-result-value { color: #2e7d4f; }
+.feasibility-result--neg { background: #fdf0ee; border-color: #f1d4cf; }
+.feasibility-result--neg .feasibility-result-value { color: #c0392b; }
+
+/* Spreadsheet-style ledger (scoped to the feasibility pro forma only) */
+.feasibility-subsection dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: 14px;
+  margin: 0;
+}
+.feasibility-subsection .report-row { display: contents; }
+.feasibility-subsection .report-row dt,
+.feasibility-subsection .report-row dd {
+  padding: 5px 0;
+  border-bottom: 1px solid #ededed;
+  font-size: 13px;
+}
+.feasibility-subsection .report-row dt { color: #555; }
+.feasibility-subsection .report-row dd {
+  text-align: right;
+  font-weight: 500;
+  color: #222;
+  font-variant-numeric: tabular-nums;
+}
+.feasibility-subsection .report-row--strong dt,
+.feasibility-subsection .report-row--strong dd {
+  font-weight: 700;
+  color: #111;
+  font-size: 13.5px;
+}
+.feasibility-subsection .report-row--sep dt,
+.feasibility-subsection .report-row--sep dd {
+  border-top: 2px solid #d2d2d2;
+  padding-top: 6px;
+}
+.feasibility-subsection .report-row--indent dt { padding-left: 14px; }
 
 @media print {
   body > *:not(#report-modal) { display: none !important; }

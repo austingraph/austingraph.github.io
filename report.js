@@ -370,21 +370,18 @@
 
   function populateData(data) {
     dataEl.innerHTML = '';
-    // Two-column body: feasibility headline (left, first thing read) + parcel
-    // details (right). Parcel id/address live in the report title, so the old
-    // "Parcel identity" card is intentionally dropped as redundant.
-    const feasCol = document.createElement('div');
-    feasCol.className = 'report-col';
-    feasCol.id = 'report-feas-col';
+    // Single-column body: Appraisal & Tax (the facts) reads first, then the
+    // Development-feasibility ledger (the analysis). Parcel id/address live in
+    // the report title, so the old "Parcel identity" card is dropped as redundant.
     const detailCol = document.createElement('div');
     detailCol.className = 'report-col';
     detailCol.id = 'report-detail-col';
-    dataEl.appendChild(feasCol);
+    const feasCol = document.createElement('div');
+    feasCol.className = 'report-col';
+    feasCol.id = 'report-feas-col';
     dataEl.appendChild(detailCol);
+    dataEl.appendChild(feasCol);
 
-    // Dimensions, Development potential, Civic connections and Neighborhood
-    // profile now live in the left panel. The report is the financial surface:
-    // full appraisal/tax + derived investor signals (right), feasibility (left).
     detailCol.appendChild(buildAppraisalSection(data));
   }
 
