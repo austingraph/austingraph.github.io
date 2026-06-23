@@ -187,7 +187,7 @@ def iter_property_rows(zf, fname, target_yr, impr_map):
                 continue
 
             yr = fld(line, P, "prop_val_yr").strip()
-            if yr and yr != str(target_yr):
+            if yr and int(yr) != target_yr:   # field is 5-char "02026"; compare as int
                 continue
 
             pid_raw = fld(line, P, "prop_id").strip()
