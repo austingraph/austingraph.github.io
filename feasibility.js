@@ -84,10 +84,16 @@
     const retOnEquity = equity > 0 ? profit / equity : null;
     const yieldUnlev  = (noi != null && totalCost > 0) ? noi / totalCost : null;
 
+    // Residual land value: the land price at which return-on-cost equals target.
+    // total*(1+target)=exit ⇒ land = exit/(1+target) − (build costs, land-independent).
+    const targetRoc    = s.targetRoc != null ? s.targetRoc : 0.15;
+    const buildCosts   = hardCosts + softCosts + contingency + finCost;
+    const residualLand = exitValue / (1 + targetRoc) - buildCosts;
+
     return {
       hardCosts, softCosts, contingency, finCost, loanAmt,
       totalCost, equity, exitValue, noi, profit,
-      retOnCost, retOnEquity, yieldUnlev,
+      retOnCost, retOnEquity, yieldUnlev, residualLand,
     };
   }
 
@@ -142,67 +148,85 @@
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
+  // Branches by state.mode: 'build' (default — by-right / max-density), 'hold'
+  // (own + rent the existing building, no construction), 'residual' (build, but
+  // solve for the land price that hits a target return).
   function render(container, state) {
     container.innerHTML = '';
     const c = compute(state);
+    const mode = state.mode || 'build';
+    const isHold = mode === 'hold';
+    const isResidual = mode === 'residual';
 
     // ── Site summary ──
     const { wrap: siteSec, dl: siteDl } = dlSection('Site');
     siteDl.appendChild(row('Lot area', fmtSF(state.lotSqft)));
-    siteDl.appendChild(row('Buildable floor area', fmtSF(state.floorArea)));
-    siteDl.appendChild(row('Max units', state.units != null ? String(state.units) : '—'));
+    siteDl.appendChild(row(isHold ? 'Existing building area' : 'Buildable floor area', fmtSF(state.floorArea)));
+    siteDl.appendChild(row(isHold ? 'Units (existing)' : 'Max units', state.units != null ? String(state.units) : '—'));
     container.appendChild(siteSec);
 
-    // ── Uses (costs) ──
-    const { wrap: costSec, dl: costDl } = dlSection('Uses (costs)');
-    const landInp = numInput(state.landCost || '', { min: 0, step: 10000, placeholder: 'Enter acquisition cost' });
-    landInp.addEventListener('change', () => { state.landCost = parseFloat(landInp.value) || 0; render(container, state); });
-    costDl.appendChild(row('Land / acquisition', '', { node: landInp }));
-    const hardInp = numInput(state.costPerSqft, { min: 50, max: 800, step: 5 });
-    hardInp.addEventListener('change', () => { state.costPerSqft = parseFloat(hardInp.value) || state.costPerSqft; render(container, state); });
-    costDl.appendChild(row('Hard cost ($/SF)', '', { node: hardInp }));
-    costDl.appendChild(row('Hard cost total', fmt$(c.hardCosts), { indent: true }));
-    const softInp = numInput(fmtPctInput(state.softPct), { min: 0, max: 50, step: 1 });
-    softInp.addEventListener('change', () => { state.softPct = (parseFloat(softInp.value) || 0) / 100; render(container, state); });
-    costDl.appendChild(row('Soft costs (%)', '', { node: softInp }));
-    costDl.appendChild(row('Soft cost total', fmt$(c.softCosts), { indent: true }));
-    costDl.appendChild(row('Contingency (5%)', fmt$(c.contingency), { indent: true }));
-    const holdInp = numInput(state.holdMonths, { min: 6, max: 60, step: 1 });
-    holdInp.addEventListener('change', () => { state.holdMonths = parseInt(holdInp.value) || state.holdMonths; render(container, state); });
-    costDl.appendChild(row('Construction hold (months)', '', { node: holdInp }));
-    const rateInp = numInput(state.constrRate, { min: 1, max: 25, step: 0.25 });
-    rateInp.addEventListener('change', () => { state.constrRate = parseFloat(rateInp.value) || state.constrRate; render(container, state); });
-    costDl.appendChild(row('Construction rate (%)', '', { node: rateInp }));
-    const ltcInp = numInput(Math.round(state.ltc * 100), { min: 0, max: 90, step: 5 });
-    ltcInp.addEventListener('change', () => { state.ltc = (parseFloat(ltcInp.value) || 0) / 100; render(container, state); });
-    costDl.appendChild(row('Loan-to-cost (%)', '', { node: ltcInp }));
-    costDl.appendChild(row('Financing cost', fmt$(c.finCost), { indent: true }));
-    costDl.appendChild(row('Total project cost', fmt$(c.totalCost), { strong: true, sep: true }));
-    costDl.appendChild(row('  Equity', fmt$(c.equity), { indent: true }));
-    costDl.appendChild(row('  Construction loan', fmt$(c.loanAmt), { indent: true }));
-    container.appendChild(costSec);
+    if (isHold) {
+      // ── Basis (no construction) ──
+      const { wrap, dl } = dlSection('Basis');
+      const valInp = numInput(state.landCost || '', { min: 0, step: 10000, placeholder: 'Current / acquisition value' });
+      valInp.addEventListener('change', () => { state.landCost = parseFloat(valInp.value) || 0; render(container, state); });
+      dl.appendChild(row('Current value / acquisition', '', { node: valInp }));
+      dl.appendChild(row('Total basis', fmt$(c.totalCost), { strong: true, sep: true }));
+      container.appendChild(wrap);
+    } else {
+      // ── Uses (costs) ── (build / residual)
+      const { wrap: costSec, dl: costDl } = dlSection('Uses (costs)');
+      const landInp = numInput(state.landCost || '', { min: 0, step: 10000, placeholder: 'Enter acquisition cost' });
+      landInp.addEventListener('change', () => { state.landCost = parseFloat(landInp.value) || 0; render(container, state); });
+      costDl.appendChild(row('Land / acquisition', '', { node: landInp }));
+      const hardInp = numInput(state.costPerSqft, { min: 50, max: 800, step: 5 });
+      hardInp.addEventListener('change', () => { state.costPerSqft = parseFloat(hardInp.value) || state.costPerSqft; render(container, state); });
+      costDl.appendChild(row('Hard cost ($/SF)', '', { node: hardInp }));
+      costDl.appendChild(row('Hard cost total', fmt$(c.hardCosts), { indent: true }));
+      const softInp = numInput(fmtPctInput(state.softPct), { min: 0, max: 50, step: 1 });
+      softInp.addEventListener('change', () => { state.softPct = (parseFloat(softInp.value) || 0) / 100; render(container, state); });
+      costDl.appendChild(row('Soft costs (%)', '', { node: softInp }));
+      costDl.appendChild(row('Soft cost total', fmt$(c.softCosts), { indent: true }));
+      costDl.appendChild(row('Contingency (5%)', fmt$(c.contingency), { indent: true }));
+      const holdInp = numInput(state.holdMonths, { min: 6, max: 60, step: 1 });
+      holdInp.addEventListener('change', () => { state.holdMonths = parseInt(holdInp.value) || state.holdMonths; render(container, state); });
+      costDl.appendChild(row('Construction hold (months)', '', { node: holdInp }));
+      const rateInp = numInput(state.constrRate, { min: 1, max: 25, step: 0.25 });
+      rateInp.addEventListener('change', () => { state.constrRate = parseFloat(rateInp.value) || state.constrRate; render(container, state); });
+      costDl.appendChild(row('Construction rate (%)', '', { node: rateInp }));
+      const ltcInp = numInput(Math.round(state.ltc * 100), { min: 0, max: 90, step: 5 });
+      ltcInp.addEventListener('change', () => { state.ltc = (parseFloat(ltcInp.value) || 0) / 100; render(container, state); });
+      costDl.appendChild(row('Loan-to-cost (%)', '', { node: ltcInp }));
+      costDl.appendChild(row('Financing cost', fmt$(c.finCost), { indent: true }));
+      costDl.appendChild(row('Total project cost', fmt$(c.totalCost), { strong: true, sep: true }));
+      costDl.appendChild(row('  Equity', fmt$(c.equity), { indent: true }));
+      costDl.appendChild(row('  Construction loan', fmt$(c.loanAmt), { indent: true }));
+      container.appendChild(costSec);
+    }
 
     // ── Exit / income ──
-    const { wrap: exitSec, dl: exitDl } = dlSection('Exit / income');
+    const { wrap: exitSec, dl: exitDl } = dlSection(isHold ? 'Income' : 'Exit / income');
 
-    // Use type toggle
-    const toggleWrap = document.createElement('div');
-    toggleWrap.className = 'feasibility-toggle';
-    ['rental', 'sale'].forEach(u => {
-      const btn = document.createElement('button');
-      btn.className = 'feasibility-toggle-btn' + (state.useType === u ? ' active' : '');
-      btn.textContent = u === 'rental' ? 'Rental' : 'For-sale';
-      btn.addEventListener('click', () => { state.useType = u; render(container, state); });
-      toggleWrap.appendChild(btn);
-    });
-    const toggleRow = document.createElement('div');
-    toggleRow.className = 'report-row';
-    const toggleDt = document.createElement('dt'); toggleDt.textContent = 'Use type';
-    const toggleDd = document.createElement('dd'); toggleDd.appendChild(toggleWrap);
-    toggleRow.appendChild(toggleDt); toggleRow.appendChild(toggleDd);
-    exitDl.appendChild(toggleRow);
+    if (!isHold) {
+      // Use type toggle (build / residual)
+      const toggleWrap = document.createElement('div');
+      toggleWrap.className = 'feasibility-toggle';
+      ['rental', 'sale'].forEach(u => {
+        const btn = document.createElement('button');
+        btn.className = 'feasibility-toggle-btn' + (state.useType === u ? ' active' : '');
+        btn.textContent = u === 'rental' ? 'Rental' : 'For-sale';
+        btn.addEventListener('click', () => { state.useType = u; render(container, state); });
+        toggleWrap.appendChild(btn);
+      });
+      const toggleRow = document.createElement('div');
+      toggleRow.className = 'report-row';
+      const toggleDt = document.createElement('dt'); toggleDt.textContent = 'Use type';
+      const toggleDd = document.createElement('dd'); toggleDd.appendChild(toggleWrap);
+      toggleRow.appendChild(toggleDt); toggleRow.appendChild(toggleDd);
+      exitDl.appendChild(toggleRow);
+    }
 
-    if (state.useType === 'rental') {
+    if (isHold || state.useType === 'rental') {
       const rentInp = numInput(state.rentPerUnit, { min: 0, step: 50 });
       rentInp.addEventListener('change', () => { state.rentPerUnit = parseFloat(rentInp.value) || state.rentPerUnit; render(container, state); });
       exitDl.appendChild(row('Rent / unit / month ($)', '', { node: rentInp }));
@@ -221,16 +245,36 @@
       psfInp.addEventListener('change', () => { state.salePsf = parseFloat(psfInp.value) || state.salePsf; render(container, state); });
       exitDl.appendChild(row('Sale price ($/SF)', '', { node: psfInp }));
     }
-    exitDl.appendChild(row('Exit value', fmt$(c.exitValue), { strong: true, sep: true }));
+    exitDl.appendChild(row(isHold ? 'Implied value (@ cap)' : 'Exit value', fmt$(c.exitValue), { strong: true, sep: true }));
     container.appendChild(exitSec);
 
     // ── Returns ──
     const { wrap: retSec, dl: retDl } = dlSection('Returns');
-    retDl.appendChild(row('Profit / (loss)', fmt$(c.profit), { strong: true }));
-    retDl.appendChild(row('Return on cost', fmtPct(c.retOnCost)));
-    retDl.appendChild(row('Return on equity', fmtPct(c.retOnEquity)));
-    if (c.yieldUnlev != null) retDl.appendChild(row('Unleveraged yield', fmtPct(c.yieldUnlev)));
-    const profitClass = c.profit > 0 ? 'feasibility-positive' : c.profit < 0 ? 'feasibility-negative' : '';
+    if (isResidual) {
+      const tgtInp = numInput(fmtPctInput(state.targetRoc != null ? state.targetRoc : 0.15), { min: 0, max: 100, step: 1 });
+      tgtInp.addEventListener('change', () => { state.targetRoc = (parseFloat(tgtInp.value) || 0) / 100; render(container, state); });
+      retDl.appendChild(row('Target return on cost (%)', '', { node: tgtInp }));
+      retDl.appendChild(row('Residual land value', fmt$(c.residualLand), { strong: true }));
+      if (state.tcadLandVal) {
+        const ratio = state.tcadLandVal > 0 ? c.residualLand / state.tcadLandVal : null;
+        retDl.appendChild(row('vs TCAD land value',
+          `${fmt$(state.tcadLandVal)}${ratio != null ? ` (${fmtPct(ratio)})` : ''}`, { indent: true }));
+      }
+      retDl.appendChild(row('At current land cost:', '', { sep: true }));
+      retDl.appendChild(row('  Profit / (loss)', fmt$(c.profit), { indent: true }));
+      retDl.appendChild(row('  Return on cost', fmtPct(c.retOnCost), { indent: true }));
+    } else if (isHold) {
+      retDl.appendChild(row('Annual NOI (cash flow)', fmt$(c.noi), { strong: true }));
+      retDl.appendChild(row('Yield on value', fmtPct(c.yieldUnlev)));
+      retDl.appendChild(row('Implied value vs basis', fmt$(c.profit)));
+    } else {
+      retDl.appendChild(row('Profit / (loss)', fmt$(c.profit), { strong: true }));
+      retDl.appendChild(row('Return on cost', fmtPct(c.retOnCost)));
+      retDl.appendChild(row('Return on equity', fmtPct(c.retOnEquity)));
+      if (c.yieldUnlev != null) retDl.appendChild(row('Unleveraged yield', fmtPct(c.yieldUnlev)));
+    }
+    const headline = isResidual ? c.residualLand : (isHold ? c.noi : c.profit);
+    const profitClass = headline > 0 ? 'feasibility-positive' : headline < 0 ? 'feasibility-negative' : '';
     if (profitClass) retSec.querySelector('.feasibility-sub-title')?.classList.add(profitClass);
     container.appendChild(retSec);
   }
@@ -262,17 +306,25 @@
     }
 
     const typo = defaultTypology(envelope);
-    const lotSqft   = envelope?.lot_sqft    || 0;
-    const floorArea  = envelope?.max_far_sqft || envelope?.buildable_sqft || 0;
-    const maxUnits   = envelope?.max_units   ?? null;
-    const medRent    = demographics?.median_gross_rent || 1800;
+    const lotSqft      = envelope?.lot_sqft     || 0;
+    const floorAreaMax = Math.round(envelope?.max_far_sqft || envelope?.buildable_sqft || 0);
+    const maxUnits     = envelope?.max_units    ?? null;
+    const medRent      = demographics?.median_gross_rent || 1800;
+
+    // Appraisal values (from the row app.js stashed) seed scenario defaults.
+    const appr       = window.AG?.lastPanelData?.dbRow || {};
+    const landVal    = appr.appr_land_val    || 0;
+    const marketVal  = appr.appr_market_val  || 0;
+    const livingSqft = appr.appr_living_sqft || 0;
 
     const state = {
+      scenario: 'by_right',
+      mode: 'build',
       typology: typo,
       lotSqft,
-      floorArea: Math.round(floorArea),
+      floorArea: floorAreaMax,
       units: maxUnits ?? 1,
-      landCost: 0,
+      landCost: landVal,
       costPerSqft: Math.round((typo.hardMin + typo.hardMax) / 2),
       softPct: typo.softPct,
       contingencyPct: 0.05,
@@ -285,36 +337,124 @@
       vacancyPct: 0.05,
       expensePct: 0.35,
       salePsf: 280,
+      targetRoc: 0.15,
+      tcadLandVal: landVal,
       rates,
     };
 
-    // Typology selector
+    // Densest typology the unit count allows (for the Max-density scenario).
+    function densestTypology(units) {
+      if (units >= 5) return TYPOLOGIES.find(t => t.key === 'small_mf');
+      if (units >= 2) return TYPOLOGIES.find(t => t.key === 'duplex');
+      return TYPOLOGIES[0];
+    }
+
+    function seedFromTypology(t) {
+      state.typology = t;
+      state.costPerSqft = Math.round((t.hardMin + t.hardMax) / 2);
+      state.softPct = t.softPct;
+      state.capRate = DEFAULT_CAP[t.key];
+      state.useType = t.defUse;
+    }
+
+    // ── Scenario presets (seed `state`, set mode) ──
+    const SCENARIOS = [
+      { key: 'by_right', label: 'By-right' },
+      { key: 'max_home', label: 'Max density' },
+      { key: 'hold',     label: 'Hold as-is' },
+      { key: 'residual', label: 'Residual land' },
+    ];
+
+    function applyScenario(key) {
+      state.scenario = key;
+      if (key === 'hold') {
+        state.mode = 'hold';
+        state.floorArea = livingSqft || floorAreaMax || 0;
+        state.units = 1;
+        state.costPerSqft = 0;
+        state.landCost = marketVal || 0;
+        state.useType = 'rental';
+        state.capRate = DEFAULT_CAP.sf;
+        state.rentPerUnit = medRent;
+      } else if (key === 'max_home') {
+        state.mode = 'build';
+        seedFromTypology(densestTypology(maxUnits ?? 1));
+        state.units = maxUnits ?? 1;
+        state.floorArea = floorAreaMax;
+        state.landCost = landVal;
+      } else if (key === 'residual') {
+        state.mode = 'residual';
+        seedFromTypology(typo);
+        state.units = maxUnits ?? 1;
+        state.floorArea = floorAreaMax;
+        state.landCost = landVal;
+      } else { // by_right
+        state.mode = 'build';
+        seedFromTypology(typo);
+        state.units = maxUnits ?? 1;
+        state.floorArea = floorAreaMax;
+        state.landCost = landVal;
+      }
+    }
+
+    // Scenario selector (reuses typology-button styling for a consistent look).
+    const scenWrap = document.createElement('div');
+    scenWrap.className = 'feasibility-typo-selector';
+    const scenLabel = document.createElement('span');
+    scenLabel.className = 'feasibility-typo-label';
+    scenLabel.textContent = 'Scenario:';
+    scenWrap.appendChild(scenLabel);
+
+    // Building-type selector (build / residual only; hidden for hold).
     const typoWrap = document.createElement('div');
     typoWrap.className = 'feasibility-typo-selector';
     const typoLabel = document.createElement('span');
     typoLabel.className = 'feasibility-typo-label';
     typoLabel.textContent = 'Building type:';
     typoWrap.appendChild(typoLabel);
+
     const contentDiv = document.createElement('div');
+
+    function syncChrome() {
+      scenWrap.querySelectorAll('.feasibility-typo-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.scen === state.scenario);
+      });
+      typoWrap.querySelectorAll('.feasibility-typo-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.typo === state.typology.key);
+      });
+      typoWrap.style.display = state.mode === 'hold' ? 'none' : '';
+    }
+
+    SCENARIOS.forEach(sc => {
+      const btn = document.createElement('button');
+      btn.className = 'feasibility-typo-btn' + (sc.key === 'by_right' ? ' active' : '');
+      btn.dataset.scen = sc.key;
+      btn.textContent = sc.label;
+      btn.addEventListener('click', () => {
+        applyScenario(sc.key);
+        syncChrome();
+        render(contentDiv, state);
+      });
+      scenWrap.appendChild(btn);
+    });
 
     TYPOLOGIES.forEach(t => {
       const btn = document.createElement('button');
       btn.className = 'feasibility-typo-btn' + (t.key === typo.key ? ' active' : '');
+      btn.dataset.typo = t.key;
       btn.textContent = t.label;
       btn.addEventListener('click', () => {
-        state.typology = t;
-        state.costPerSqft = Math.round((t.hardMin + t.hardMax) / 2);
-        state.softPct = t.softPct;
-        state.capRate = DEFAULT_CAP[t.key];
-        state.useType = t.defUse;
-        typoWrap.querySelectorAll('.feasibility-typo-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
+        seedFromTypology(t);
+        syncChrome();
         render(contentDiv, state);
       });
       typoWrap.appendChild(btn);
     });
+
+    outer.appendChild(scenWrap);
     outer.appendChild(typoWrap);
     outer.appendChild(contentDiv);
+    syncChrome();
     render(contentDiv, state);
 
     // Source footnote
