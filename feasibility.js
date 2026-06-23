@@ -145,6 +145,9 @@
   function render(container, state) {
     container.innerHTML = '';
     const c = compute(state);
+    // Expose the live assumptions so xlsx_export.js can write the Excel pro forma.
+    window.AG.feasibilityState = state;
+    window.AG.feasibilityResult = c;
 
     // ── Site summary ──
     const { wrap: siteSec, dl: siteDl } = dlSection('Site');

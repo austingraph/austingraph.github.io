@@ -325,6 +325,14 @@
     spacer.style.flex = '1';
     row2.appendChild(spacer);
 
+    const excelBtn = document.createElement('button');
+    excelBtn.textContent = '⬇ Excel';
+    excelBtn.title = 'Export this report to a multi-sheet Excel workbook';
+    excelBtn.addEventListener('click', () => {
+      if (typeof window.AG.exportReport === 'function') window.AG.exportReport();
+    });
+    row2.appendChild(excelBtn);
+
     const printBtn = document.createElement('button');
     printBtn.className = 'primary';
     printBtn.textContent = 'Print / Save PDF';
