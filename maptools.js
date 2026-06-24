@@ -23,9 +23,9 @@
   }
 
   var OVERLAYS = [
-    { label: "Zip Codes",    file: "/shared/SecondData.geojson",        colorProperty: "zipcode"       },
+    { label: "Zip Codes",    file: "/shared/SecondData.geojson",        colorProperty: "zipcode",       labelField: "zipcode"       },
     { label: "Flood Zone",   file: "/shared/floodzone.geojson",         colorProperty: "flood_zone"    },
-    { label: "City Council", file: "/shared/Council_Districts.geojson", colorProperty: "district_name" },
+    { label: "City Council", file: "/shared/Council_Districts.geojson", colorProperty: "district_name", labelField: "district_name" },
   ];
 
   // Shared with the feasibility-report maps (report.js builds its own per-map

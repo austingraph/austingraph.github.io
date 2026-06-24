@@ -176,6 +176,7 @@
   const AUSTIN_CENTER = [-97.78, 30.30];
   const LOCATOR_STYLE = {
     version: 8,
+    glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
     sources: {
       locator: {
         type: 'raster',
@@ -277,6 +278,17 @@
             targetMap.addLayer({ id: id + '-line', type: 'line', source: id,
               layout: { visibility: 'none' },
               paint: { 'line-color': '#222', 'line-width': 1.5, 'line-opacity': 0.85 } }, before);
+            if (ov.labelField) {
+              targetMap.addLayer({ id: id + '-label', type: 'symbol', source: id,
+                layout: {
+                  visibility: 'none',
+                  'text-field': ['to-string', ['get', ov.labelField]],
+                  'text-size': 12,
+                  'text-font': ['Noto Sans Regular'],
+                  'text-max-width': 8,
+                },
+                paint: { 'text-color': '#111', 'text-halo-color': '#fff', 'text-halo-width': 2 } }, before);
+            }
             loaded = true;
           } catch (err) {
             console.error('Report overlay load error:', ov.file, err);
@@ -287,6 +299,7 @@
         const vis = cb.checked ? 'visible' : 'none';
         if (targetMap.getLayer(id + '-fill')) targetMap.setLayoutProperty(id + '-fill', 'visibility', vis);
         if (targetMap.getLayer(id + '-line')) targetMap.setLayoutProperty(id + '-line', 'visibility', vis);
+        if (targetMap.getLayer(id + '-label')) targetMap.setLayoutProperty(id + '-label', 'visibility', vis);
       });
     });
   }
