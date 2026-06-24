@@ -161,6 +161,8 @@
       initDraw();
       reportMap.on('click', onMeasureClick);
 
+      attachOverlayControl(reportMap, mapEl, 'rp-parcel-outline');
+
       sourcesReady = true;
       reportMap.resize();
       applyPending();
@@ -207,6 +209,85 @@
     locatorMap.on('load', () => {
       locatorMap.resize();
       updateLocator();
+      attachOverlayControl(locatorMap, locatorEl);
+    });
+  }
+
+  // ── Overlay control (reused on each report map) ────────────────────────────────
+  // Reuses window.AG.OVERLAYS (defined in maptools.js) — the same GeoJSON files /
+  // color properties the main map uses. Builds a small floating "Overlays" button
+  // + checkbox dropdown over the given map and lazy-loads each overlay onto it.
+  function attachOverlayControl(targetMap, container, beforeId) {
+    const overlays = window.AG.OVERLAYS || [];
+    if (!overlays.length || !container) return;
+    const palette = ['#4285f4', '#ea4335', '#fbbc04', '#34a853', '#ff6d00', '#46bdc6', '#7b1fa2', '#f06292'];
+
+    const ctrl = document.createElement('div');
+    ctrl.className = 'report-ovl-ctrl';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'report-ovl-btn';
+    btn.textContent = 'Overlays ▾';
+    const menu = document.createElement('div');
+    menu.className = 'report-ovl-menu';
+    menu.hidden = true;
+    ctrl.appendChild(btn);
+    ctrl.appendChild(menu);
+    container.appendChild(ctrl);
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      menu.hidden = !menu.hidden;
+      btn.classList.toggle('open', !menu.hidden);
+    });
+    document.addEventListener('click', (e) => {
+      if (!ctrl.contains(e.target)) { menu.hidden = true; btn.classList.remove('open'); }
+    });
+
+    overlays.forEach((ov, i) => {
+      const id = 'rovl' + i;
+      let loaded = false;
+      const lbl = document.createElement('label');
+      lbl.className = 'report-ovl-item';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      const span = document.createElement('span');
+      span.textContent = ov.label;
+      lbl.appendChild(cb); lbl.appendChild(span);
+      menu.appendChild(lbl);
+
+      cb.addEventListener('change', async () => {
+        if (!loaded) {
+          cb.disabled = true; span.textContent = ov.label + ' (loading…)';
+          try {
+            const data = await (await fetch(ov.file)).json();
+            let colorExpr = '#4285f4';
+            if (ov.colorProperty) {
+              const vals = [...new Set(data.features.map((f) => f.properties[ov.colorProperty]))];
+              const m = ['match', ['get', ov.colorProperty]];
+              vals.forEach((v, idx) => m.push(v, palette[idx % palette.length]));
+              m.push('#888');
+              colorExpr = m;
+            }
+            const before = (beforeId && targetMap.getLayer(beforeId)) ? beforeId : undefined;
+            targetMap.addSource(id, { type: 'geojson', data });
+            targetMap.addLayer({ id: id + '-fill', type: 'fill', source: id,
+              layout: { visibility: 'none' },
+              paint: { 'fill-color': colorExpr, 'fill-opacity': 0.35 } }, before);
+            targetMap.addLayer({ id: id + '-line', type: 'line', source: id,
+              layout: { visibility: 'none' },
+              paint: { 'line-color': '#222', 'line-width': 1.5, 'line-opacity': 0.85 } }, before);
+            loaded = true;
+          } catch (err) {
+            console.error('Report overlay load error:', ov.file, err);
+            span.textContent = ov.label + ' (error)'; cb.disabled = false; cb.checked = false; return;
+          }
+          span.textContent = ov.label; cb.disabled = false;
+        }
+        const vis = cb.checked ? 'visible' : 'none';
+        if (targetMap.getLayer(id + '-fill')) targetMap.setLayoutProperty(id + '-fill', 'visibility', vis);
+        if (targetMap.getLayer(id + '-line')) targetMap.setLayoutProperty(id + '-line', 'visibility', vis);
+      });
     });
   }
 

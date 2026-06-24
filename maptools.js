@@ -28,6 +28,10 @@
     { label: "City Council", file: "/shared/Council_Districts.geojson", colorProperty: "district_name" },
   ];
 
+  // Shared with the feasibility-report maps (report.js builds its own per-map
+  // control from this same list, so the overlays stay in one place).
+  window.AG.OVERLAYS = OVERLAYS;
+
   // ── Satellite ────────────────────────────────────────────────────────────────
 
   function initSatellite() {
