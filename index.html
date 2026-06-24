@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>austingraph</title>
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
-  <link rel="stylesheet" href="style.css?v=20260623c" />
+  <link rel="stylesheet" href="style.css?v=20260623d" />
 </head>
 <body>
   <div id="map"></div>
@@ -105,8 +105,11 @@
       <h2 id="report-title">Parcel Report</h2>
       <!-- Toolbar injected by report.js -->
       <div id="report-toolbar"></div>
-      <!-- Live interactive mini-map (hidden at print time) -->
-      <div id="report-map"></div>
+      <!-- Live maps: parcel mini-map (2/3) + city locator (1/3). Hidden at print. -->
+      <div id="report-maps">
+        <div id="report-map"></div>
+        <div id="report-locator"></div>
+      </div>
       <!-- Print-only snapshot baked at print time -->
       <img id="report-print-img" alt="Parcel map" />
       <div id="report-data"></div>
@@ -126,7 +129,7 @@
   <script src="connections.js?v=20260613"></script>
   <script src="neighborhood.js?v=20260623a"></script>
   <script src="feasibility.js?v=20260623f"></script>
-  <script src="report.js?v=20260623h"></script>
+  <script src="report.js?v=20260623i"></script>
   <script defer src="https://unpkg.com/maplibre-contour@0.0.5/dist/index.min.js"></script>
   <script defer src="https://unpkg.com/terra-draw/dist/terra-draw.umd.js"></script>
   <script defer src="https://unpkg.com/terra-draw-maplibre-gl-adapter/dist/terra-draw-maplibre-gl-adapter.umd.js"></script>

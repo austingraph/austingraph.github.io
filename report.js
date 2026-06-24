@@ -11,6 +11,7 @@
   const closeBtn  = document.getElementById('report-close');
   const toolbar   = document.getElementById('report-toolbar');
   const mapEl     = document.getElementById('report-map');
+  const locatorEl = document.getElementById('report-locator');
   const printImg  = document.getElementById('report-print-img');
   const dataEl    = document.getElementById('report-data');
   const notesEl   = document.getElementById('report-notes');
@@ -21,6 +22,9 @@
   let reportMap    = null;   // MapLibre instance, created lazily and reused
   let sourcesReady = false;  // true once load handler has added sources+layers
   let pendingGeom  = null;   // parcel geometry waiting to be drawn
+
+  let locatorMap    = null;  // small city-context map, created lazily and reused
+  let locatorMarker = null;  // marker pinning the parcel within Austin
 
   let draw       = null;
   let measuring  = false;
@@ -160,6 +164,49 @@
       sourcesReady = true;
       reportMap.resize();
       applyPending();
+    });
+  }
+
+  // ── City locator map (1/3) ─────────────────────────────────────────────────────
+  // A simple, non-interactive map of Austin (Esri street basemap shows I-35,
+  // US-183/Research, MoPac and city labels) with a marker on the parcel, so the
+  // reader sees where in the city the parcel sits.
+  const AUSTIN_CENTER = [-97.78, 30.30];
+  const LOCATOR_STYLE = {
+    version: 8,
+    sources: {
+      locator: {
+        type: 'raster',
+        tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}'],
+        tileSize: 256,
+        attribution: 'Tiles &copy; Esri',
+      },
+    },
+    layers: [{ id: 'locator-bg', type: 'raster', source: 'locator' }],
+  };
+
+  function updateLocator() {
+    if (!locatorMap || !pendingGeom) return;
+    const [lon, lat] = centroid(pendingGeom);
+    if (!locatorMarker) {
+      locatorMarker = new maplibregl.Marker({ color: '#c0392b' }).setLngLat([lon, lat]).addTo(locatorMap);
+    } else {
+      locatorMarker.setLngLat([lon, lat]);
+    }
+  }
+
+  function createLocatorMap() {
+    locatorMap = new maplibregl.Map({
+      container: locatorEl,
+      style: LOCATOR_STYLE,
+      center: AUSTIN_CENTER,
+      zoom: 9.3,
+      interactive: false,
+      attributionControl: false,
+    });
+    locatorMap.on('load', () => {
+      locatorMap.resize();
+      updateLocator();
     });
   }
 
@@ -549,6 +596,13 @@
       if (draw) draw.clear();
       clearMeasure();
       applyPending();
+    }
+
+    if (!locatorMap) {
+      requestAnimationFrame(() => requestAnimationFrame(() => createLocatorMap()));
+    } else {
+      locatorMap.resize();
+      updateLocator();
     }
   }
 
