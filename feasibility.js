@@ -23,6 +23,48 @@
   // Cap rates: Marcus & Millichap Austin Q1 2025
   const DEFAULT_CAP = { sf: 0.055, adu: 0.0575, duplex: 0.055, small_mf: 0.055, mixed: 0.0675 };
 
+  // Plain-language explanations shown in the per-line ⓘ tooltips (demo helper).
+  const INFO = {
+    lotArea:      'Total land area of the parcel, from TCAD records.',
+    buildable:    'Approximate floor area you could build, implied by the zoning’s FAR and lot-coverage limits.',
+    existingArea: 'Living area of the building currently on the lot (TCAD).',
+    maxUnits:     'Maximum dwelling units the zoning allows here (includes Austin’s HOME rules).',
+    unitsExisting:'Treated as one existing structure for the hold scenario.',
+    land:         'What you pay for the land. Seeded from the TCAD land value — change it to your purchase price.',
+    currentValue: 'Today’s value (or your purchase price). Seeded from the TCAD market value.',
+    hardPsf:      'Construction cost per square foot — labor and materials. Varies by building type.',
+    hardTotal:    'Floor area × hard cost per square foot.',
+    softPct:      'Design, engineering, permits and fees, as a percent of hard costs.',
+    softTotal:    'Hard cost total × the soft-cost percent.',
+    contingency:  'A buffer for cost overruns (5% of hard + soft costs).',
+    holdMonths:   'How long construction takes — used to size the loan interest.',
+    constrRate:   'Annual interest rate on the construction loan.',
+    ltc:          'Loan-to-cost: the share of project cost the loan covers; the rest is your equity.',
+    finCost:      'Estimated construction-loan interest over the build period.',
+    totalCost:    'Everything in: land + construction + soft costs + contingency + financing.',
+    totalBasis:   'Your all-in cost to own — here, the acquisition value.',
+    equity:       'Cash you put in — the part of cost the loan doesn’t cover.',
+    loan:         'The borrowed portion of project cost.',
+    rent:         'Expected monthly rent per unit. Seeded from the neighborhood median.',
+    vacancy:      'Share of potential rent lost to empty units.',
+    opex:         'Operating costs (taxes, insurance, maintenance) as a percent of rent.',
+    noi:          'Net operating income — rent left after vacancy and operating expenses.',
+    cap:          'Capitalization rate — the market yield used to value the income. Lower cap = higher value.',
+    salePsf:      'Expected sale price per square foot of finished space.',
+    exitValue:    'What the finished project is worth: NOI ÷ cap rate (rental) or area × sale price (for-sale).',
+    impliedValue: 'Value of the income at the chosen cap rate (NOI ÷ cap rate).',
+    profit:       'Exit value minus total project cost.',
+    roc:          'Return on cost — profit ÷ total project cost.',
+    roe:          'Return on equity — profit ÷ the cash you invested.',
+    yieldU:       'Unleveraged yield — NOI ÷ total cost, ignoring debt.',
+    annualNoi:    'Yearly income after vacancy and operating expenses.',
+    yieldOnValue: 'NOI ÷ value — your income return on what it’s worth.',
+    valueVsBasis: 'Income-based value minus what you paid.',
+    targetRoc:    'The return you want to earn. It drives the land price you can afford to pay.',
+    residualLand: 'The most you could pay for the land and still hit your target return.',
+    vsTcadLand:   'TCAD’s land value, shown for comparison.',
+  };
+
   let cachedRates = null;
 
   async function fetchRates() {
@@ -115,6 +157,15 @@
       (isInput ? ' report-row--input' : '');
     const dt = document.createElement('dt');
     dt.textContent = label;
+    if (opts.info) {
+      const ic = document.createElement('span');
+      ic.className = 'info-icon';
+      ic.setAttribute('data-tip', opts.info);
+      ic.setAttribute('aria-label', opts.info);
+      ic.setAttribute('tabindex', '0');
+      ic.textContent = 'i';
+      dt.appendChild(ic);
+    }
     const dd = document.createElement('dd');
     if (opts.node) {
       dd.appendChild(opts.node);
@@ -189,9 +240,9 @@
 
     // ── Site summary ──
     const { wrap: siteSec, dl: siteDl } = dlSection('Site');
-    siteDl.appendChild(row('Lot area', fmtSF(state.lotSqft)));
-    siteDl.appendChild(row(isHold ? 'Existing building area' : 'Buildable floor area', fmtSF(state.floorArea)));
-    siteDl.appendChild(row(isHold ? 'Units (existing)' : 'Max units', state.units != null ? String(state.units) : '—'));
+    siteDl.appendChild(row('Lot area', fmtSF(state.lotSqft), { info: INFO.lotArea }));
+    siteDl.appendChild(row(isHold ? 'Existing building area' : 'Buildable floor area', fmtSF(state.floorArea), { info: isHold ? INFO.existingArea : INFO.buildable }));
+    siteDl.appendChild(row(isHold ? 'Units (existing)' : 'Max units', state.units != null ? String(state.units) : '—', { info: isHold ? INFO.unitsExisting : INFO.maxUnits }));
     container.appendChild(siteSec);
 
     if (isHold) {
@@ -199,37 +250,37 @@
       const { wrap, dl } = dlSection('Basis');
       const valInp = numInput(state.landCost || '', { min: 0, step: 10000, placeholder: 'Current / acquisition value' });
       valInp.addEventListener('change', () => { state.landCost = parseFloat(valInp.value) || 0; render(container, state); });
-      dl.appendChild(row('Current value / acquisition', '', { node: valInp }));
-      dl.appendChild(row('Total basis', fmt$(c.totalCost), { strong: true, sep: true }));
+      dl.appendChild(row('Current value / acquisition', '', { node: valInp, info: INFO.currentValue }));
+      dl.appendChild(row('Total basis', fmt$(c.totalCost), { strong: true, sep: true, info: INFO.totalBasis }));
       container.appendChild(wrap);
     } else {
       // ── Uses (costs) ── (build / residual)
       const { wrap: costSec, dl: costDl } = dlSection('Uses (costs)');
       const landInp = numInput(state.landCost || '', { min: 0, step: 10000, placeholder: 'Enter acquisition cost' });
       landInp.addEventListener('change', () => { state.landCost = parseFloat(landInp.value) || 0; render(container, state); });
-      costDl.appendChild(row('Land / acquisition', '', { node: landInp }));
+      costDl.appendChild(row('Land / acquisition', '', { node: landInp, info: INFO.land }));
       const hardInp = numInput(state.costPerSqft, { min: 50, max: 800, step: 5 });
       hardInp.addEventListener('change', () => { state.costPerSqft = parseFloat(hardInp.value) || state.costPerSqft; render(container, state); });
-      costDl.appendChild(row('Hard cost ($/SF)', '', { node: hardInp }));
-      costDl.appendChild(row('Hard cost total', fmt$(c.hardCosts), { indent: true }));
+      costDl.appendChild(row('Hard cost ($/SF)', '', { node: hardInp, info: INFO.hardPsf }));
+      costDl.appendChild(row('Hard cost total', fmt$(c.hardCosts), { indent: true, info: INFO.hardTotal }));
       const softInp = numInput(fmtPctInput(state.softPct), { min: 0, max: 50, step: 1 });
       softInp.addEventListener('change', () => { state.softPct = (parseFloat(softInp.value) || 0) / 100; render(container, state); });
-      costDl.appendChild(row('Soft costs (%)', '', { node: softInp }));
-      costDl.appendChild(row('Soft cost total', fmt$(c.softCosts), { indent: true }));
-      costDl.appendChild(row('Contingency (5%)', fmt$(c.contingency), { indent: true }));
+      costDl.appendChild(row('Soft costs (%)', '', { node: softInp, info: INFO.softPct }));
+      costDl.appendChild(row('Soft cost total', fmt$(c.softCosts), { indent: true, info: INFO.softTotal }));
+      costDl.appendChild(row('Contingency (5%)', fmt$(c.contingency), { indent: true, info: INFO.contingency }));
       const holdInp = numInput(state.holdMonths, { min: 6, max: 60, step: 1 });
       holdInp.addEventListener('change', () => { state.holdMonths = parseInt(holdInp.value) || state.holdMonths; render(container, state); });
-      costDl.appendChild(row('Construction hold (months)', '', { node: holdInp }));
+      costDl.appendChild(row('Construction hold (months)', '', { node: holdInp, info: INFO.holdMonths }));
       const rateInp = numInput(state.constrRate, { min: 1, max: 25, step: 0.25 });
       rateInp.addEventListener('change', () => { state.constrRate = parseFloat(rateInp.value) || state.constrRate; render(container, state); });
-      costDl.appendChild(row('Construction rate (%)', '', { node: rateInp }));
+      costDl.appendChild(row('Construction rate (%)', '', { node: rateInp, info: INFO.constrRate }));
       const ltcInp = numInput(Math.round(state.ltc * 100), { min: 0, max: 90, step: 5 });
       ltcInp.addEventListener('change', () => { state.ltc = (parseFloat(ltcInp.value) || 0) / 100; render(container, state); });
-      costDl.appendChild(row('Loan-to-cost (%)', '', { node: ltcInp }));
-      costDl.appendChild(row('Financing cost', fmt$(c.finCost), { indent: true }));
-      costDl.appendChild(row('Total project cost', fmt$(c.totalCost), { strong: true, sep: true }));
-      costDl.appendChild(row('  Equity', fmt$(c.equity), { indent: true }));
-      costDl.appendChild(row('  Construction loan', fmt$(c.loanAmt), { indent: true }));
+      costDl.appendChild(row('Loan-to-cost (%)', '', { node: ltcInp, info: INFO.ltc }));
+      costDl.appendChild(row('Financing cost', fmt$(c.finCost), { indent: true, info: INFO.finCost }));
+      costDl.appendChild(row('Total project cost', fmt$(c.totalCost), { strong: true, sep: true, info: INFO.totalCost }));
+      costDl.appendChild(row('  Equity', fmt$(c.equity), { indent: true, info: INFO.equity }));
+      costDl.appendChild(row('  Construction loan', fmt$(c.loanAmt), { indent: true, info: INFO.loan }));
       container.appendChild(costSec);
     }
 
@@ -258,23 +309,23 @@
     if (isHold || state.useType === 'rental') {
       const rentInp = numInput(state.rentPerUnit, { min: 0, step: 50 });
       rentInp.addEventListener('change', () => { state.rentPerUnit = parseFloat(rentInp.value) || state.rentPerUnit; render(container, state); });
-      exitDl.appendChild(row('Rent / unit / month ($)', '', { node: rentInp }));
+      exitDl.appendChild(row('Rent / unit / month ($)', '', { node: rentInp, info: INFO.rent }));
       const vacInp = numInput(Math.round(state.vacancyPct * 100), { min: 0, max: 30, step: 1 });
       vacInp.addEventListener('change', () => { state.vacancyPct = (parseFloat(vacInp.value) || 0) / 100; render(container, state); });
-      exitDl.appendChild(row('Vacancy rate (%)', '', { node: vacInp }));
+      exitDl.appendChild(row('Vacancy rate (%)', '', { node: vacInp, info: INFO.vacancy }));
       const expInp = numInput(Math.round(state.expensePct * 100), { min: 0, max: 60, step: 1 });
       expInp.addEventListener('change', () => { state.expensePct = (parseFloat(expInp.value) || 0) / 100; render(container, state); });
-      exitDl.appendChild(row('Operating expenses (%)', '', { node: expInp }));
-      exitDl.appendChild(row('NOI', fmt$(c.noi), { indent: true }));
+      exitDl.appendChild(row('Operating expenses (%)', '', { node: expInp, info: INFO.opex }));
+      exitDl.appendChild(row('NOI', fmt$(c.noi), { indent: true, info: INFO.noi }));
       const capInp = numInput(fmtPctInput(state.capRate), { min: 1, max: 15, step: 0.25 });
       capInp.addEventListener('change', () => { state.capRate = (parseFloat(capInp.value) || 0) / 100; render(container, state); });
-      exitDl.appendChild(row('Cap rate (%)', '', { node: capInp }));
+      exitDl.appendChild(row('Cap rate (%)', '', { node: capInp, info: INFO.cap }));
     } else {
       const psfInp = numInput(state.salePsf, { min: 50, step: 10 });
       psfInp.addEventListener('change', () => { state.salePsf = parseFloat(psfInp.value) || state.salePsf; render(container, state); });
-      exitDl.appendChild(row('Sale price ($/SF)', '', { node: psfInp }));
+      exitDl.appendChild(row('Sale price ($/SF)', '', { node: psfInp, info: INFO.salePsf }));
     }
-    exitDl.appendChild(row(isHold ? 'Implied value (@ cap)' : 'Exit value', fmt$(c.exitValue), { strong: true, sep: true }));
+    exitDl.appendChild(row(isHold ? 'Implied value (@ cap)' : 'Exit value', fmt$(c.exitValue), { strong: true, sep: true, info: isHold ? INFO.impliedValue : INFO.exitValue }));
     container.appendChild(exitSec);
 
     // ── Returns ──
@@ -282,25 +333,25 @@
     if (isResidual) {
       const tgtInp = numInput(fmtPctInput(state.targetRoc != null ? state.targetRoc : 0.15), { min: 0, max: 100, step: 1 });
       tgtInp.addEventListener('change', () => { state.targetRoc = (parseFloat(tgtInp.value) || 0) / 100; render(container, state); });
-      retDl.appendChild(row('Target return on cost (%)', '', { node: tgtInp }));
-      retDl.appendChild(row('Residual land value', fmt$(c.residualLand), { strong: true }));
+      retDl.appendChild(row('Target return on cost (%)', '', { node: tgtInp, info: INFO.targetRoc }));
+      retDl.appendChild(row('Residual land value', fmt$(c.residualLand), { strong: true, info: INFO.residualLand }));
       if (state.tcadLandVal) {
         const ratio = state.tcadLandVal > 0 ? c.residualLand / state.tcadLandVal : null;
         retDl.appendChild(row('vs TCAD land value',
-          `${fmt$(state.tcadLandVal)}${ratio != null ? ` (${fmtPct(ratio)})` : ''}`, { indent: true }));
+          `${fmt$(state.tcadLandVal)}${ratio != null ? ` (${fmtPct(ratio)})` : ''}`, { indent: true, info: INFO.vsTcadLand }));
       }
       retDl.appendChild(row('At current land cost:', '', { sep: true }));
-      retDl.appendChild(row('  Profit / (loss)', fmt$(c.profit), { indent: true }));
-      retDl.appendChild(row('  Return on cost', fmtPct(c.retOnCost), { indent: true }));
+      retDl.appendChild(row('  Profit / (loss)', fmt$(c.profit), { indent: true, info: INFO.profit }));
+      retDl.appendChild(row('  Return on cost', fmtPct(c.retOnCost), { indent: true, info: INFO.roc }));
     } else if (isHold) {
-      retDl.appendChild(row('Annual NOI (cash flow)', fmt$(c.noi), { strong: true }));
-      retDl.appendChild(row('Yield on value', fmtPct(c.yieldUnlev)));
-      retDl.appendChild(row('Implied value vs basis', fmt$(c.profit)));
+      retDl.appendChild(row('Annual NOI (cash flow)', fmt$(c.noi), { strong: true, info: INFO.annualNoi }));
+      retDl.appendChild(row('Yield on value', fmtPct(c.yieldUnlev), { info: INFO.yieldOnValue }));
+      retDl.appendChild(row('Implied value vs basis', fmt$(c.profit), { info: INFO.valueVsBasis }));
     } else {
-      retDl.appendChild(row('Profit / (loss)', fmt$(c.profit), { strong: true }));
-      retDl.appendChild(row('Return on cost', fmtPct(c.retOnCost)));
-      retDl.appendChild(row('Return on equity', fmtPct(c.retOnEquity)));
-      if (c.yieldUnlev != null) retDl.appendChild(row('Unleveraged yield', fmtPct(c.yieldUnlev)));
+      retDl.appendChild(row('Profit / (loss)', fmt$(c.profit), { strong: true, info: INFO.profit }));
+      retDl.appendChild(row('Return on cost', fmtPct(c.retOnCost), { info: INFO.roc }));
+      retDl.appendChild(row('Return on equity', fmtPct(c.retOnEquity), { info: INFO.roe }));
+      if (c.yieldUnlev != null) retDl.appendChild(row('Unleveraged yield', fmtPct(c.yieldUnlev), { info: INFO.yieldU }));
     }
     const headline = isResidual ? c.residualLand : (isHold ? c.noi : c.profit);
     const profitClass = headline > 0 ? 'feasibility-positive' : headline < 0 ? 'feasibility-negative' : '';
@@ -316,6 +367,16 @@
     h.className = 'report-section-title';
     h.textContent = 'Development feasibility';
     outer.appendChild(h);
+
+    // Proof-of-concept framing: defaults are generic, so most scenarios show a
+    // loss until tailored to a real deal. Hover any ⓘ for what a line means.
+    const poc = document.createElement('p');
+    poc.className = 'feasibility-poc-note';
+    poc.innerHTML = '<b>Proof of concept.</b> These figures use generic cost, rent, and ' +
+      'interest-rate assumptions, so most scenarios show a loss by default. Every tinted input ' +
+      'is editable, and the model is built to be tailored to a real deal. Hover the ' +
+      '<b>ⓘ</b> on any line for what it means.';
+    outer.appendChild(poc);
 
     const loading = document.createElement('p');
     loading.className = 'report-env-note';

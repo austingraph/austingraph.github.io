@@ -810,6 +810,70 @@ body {
   padding-top: 6px;
 }
 
+/* Proof-of-concept callout at the top of the calculator */
+.feasibility-poc-note {
+  background: #fff8d6;
+  border: 1px solid #e3d488;
+  border-radius: 6px;
+  padding: 9px 12px;
+  font-size: 12px;
+  color: #5b5226;
+  line-height: 1.45;
+  margin: 8px 0 12px;
+}
+.feasibility-poc-note b { color: #4a4326; }
+
+/* Per-line info icon + yellow hover tooltip */
+.info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  margin-left: 5px;
+  border-radius: 50%;
+  background: #c9a93f;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  font-style: italic;
+  font-family: Georgia, "Times New Roman", serif;
+  cursor: help;
+  position: relative;
+  vertical-align: middle;
+  user-select: none;
+}
+.info-icon::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: 150%;
+  left: 0;
+  z-index: 20;
+  width: max-content;
+  max-width: 240px;
+  background: #fff8d6;
+  color: #4a4326;
+  border: 1px solid #e3d488;
+  border-radius: 5px;
+  padding: 6px 9px;
+  font-size: 11.5px;
+  font-weight: 400;
+  font-style: normal;
+  line-height: 1.4;
+  text-align: left;
+  white-space: normal;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s;
+  pointer-events: none;
+}
+.info-icon:hover::after,
+.info-icon:focus::after {
+  opacity: 1;
+  visibility: visible;
+}
+
 /* Plain-language scenario description + editable-cell legend */
 .feasibility-scen-desc {
   font-size: 12.5px;
