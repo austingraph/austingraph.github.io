@@ -357,10 +357,19 @@
     h.textContent = title;
     sec.appendChild(h);
     const dl = document.createElement('dl');
-    for (const [label, value] of rows) {
+    for (const [label, value, info] of rows) {
       const div = document.createElement('div');
       div.className = 'report-row';
       const dt = document.createElement('dt'); dt.textContent = label;
+      if (info) {
+        const ic = document.createElement('span');
+        ic.className = 'info-icon';
+        ic.setAttribute('data-tip', info);
+        ic.setAttribute('aria-label', info);
+        ic.setAttribute('tabindex', '0');
+        ic.textContent = 'i';
+        dt.appendChild(ic);
+      }
       const dd = document.createElement('dd'); dd.textContent = value || '—';
       div.appendChild(dt); div.appendChild(dd); dl.appendChild(div);
     }
@@ -410,27 +419,43 @@
     const codes     = Array.isArray(row.appr_exemptions) ? row.appr_exemptions : [];
 
     const rows = [];
-    rows.push(['Market value',      usd(market)]);
-    rows.push(['Land value',        usd(land)]);
-    rows.push(['Improvement value', usd(impr)]);
+    rows.push(['Market value',      usd(market),
+      "TCAD's total market value — land plus improvements."]);
+    rows.push(['Land value',        usd(land),
+      "TCAD's value of the land alone."]);
+    rows.push(['Improvement value', usd(impr),
+      "TCAD's value of the building(s) on the land."]);
     rows.push(['Assessed value',
-      (assessed != null && assessed < market * 0.95) ? `${usd(assessed)} (homestead cap)` : usd(assessed)]);
-    if (row.appr_taxable_val != null) rows.push(['Taxable value', usd(row.appr_taxable_val)]);
-    rows.push(['Exemptions', codes.length ? codes.map((c) => labels[c] || c).join(', ') : 'None']);
-    rows.push(['Est. annual tax', `${usd(estTax)}/yr (~${(taxRate * 100).toFixed(1)}%, Austin proper)`]);
-    rows.push(['Tax as % of market', `${(estTax / market * 100).toFixed(2)}%`]);
-    if (land && market)        rows.push(['Land share of value', `${Math.round(land / market * 100)}% (redevelopment signal)`]);
-    if (land && lotSqft > 0)   rows.push(['Land $/sqft', `$${(land / lotSqft).toFixed(2)}`]);
-    if (impr && row.appr_living_sqft) rows.push(['Building $/sqft', `$${Math.round(impr / row.appr_living_sqft).toLocaleString()}`]);
-    if (row.appr_yr_built)     rows.push(['Year built', `${row.appr_yr_built} (${thisYear - row.appr_yr_built} yrs old)`]);
-    if (row.appr_living_sqft)  rows.push(['Living area', `${row.appr_living_sqft.toLocaleString()} sq ft`]);
+      (assessed != null && assessed < market * 0.95) ? `${usd(assessed)} (homestead cap)` : usd(assessed),
+      'Value used for taxes. May sit below market when a homestead 10% cap applies.']);
+    if (row.appr_taxable_val != null) rows.push(['Taxable value', usd(row.appr_taxable_val),
+      'The value the tax bill is actually computed on, after exemptions.']);
+    rows.push(['Exemptions', codes.length ? codes.map((c) => labels[c] || c).join(', ') : 'None',
+      'Tax exemptions on record (e.g. homestead, over-65, disabled veteran).']);
+    rows.push(['Est. annual tax', `${usd(estTax)}/yr (~${(taxRate * 100).toFixed(1)}%, Austin proper)`,
+      'Rough estimate = assessed value × ~2% (a typical Austin-proper combined rate). Actual varies by district.']);
+    rows.push(['Tax as % of market', `${(estTax / market * 100).toFixed(2)}%`,
+      'Estimated annual tax divided by market value.']);
+    if (land && market)        rows.push(['Land share of value', `${Math.round(land / market * 100)}% (redevelopment signal)`,
+      'Land value ÷ market value. A high share can signal a tear-down / redevelopment candidate.']);
+    if (land && lotSqft > 0)   rows.push(['Land $/sqft', `$${(land / lotSqft).toFixed(2)}`,
+      'Land value divided by lot size — a land-price benchmark.']);
+    if (impr && row.appr_living_sqft) rows.push(['Building $/sqft', `$${Math.round(impr / row.appr_living_sqft).toLocaleString()}`,
+      'Improvement value divided by living area.']);
+    if (row.appr_yr_built)     rows.push(['Year built', `${row.appr_yr_built} (${thisYear - row.appr_yr_built} yrs old)`,
+      'Year the main improvement was built, with its age.']);
+    if (row.appr_living_sqft)  rows.push(['Living area', `${row.appr_living_sqft.toLocaleString()} sq ft`,
+      'Finished building area from TCAD.']);
     // Owner name intentionally withheld; available from the TCAD appraisal roll.
-    rows.push(['Owner', 'Available from TCAD appraisal roll']);
+    rows.push(['Owner', 'Available from TCAD appraisal roll',
+      'Owner names are not shown on the site; look the parcel up at TCAD if you need ownership.']);
     const ownerState = row.appr_owner_state;
     if (ownerState) {
-      rows.push(['Owner location', ownerState !== 'TX' ? `Out-of-state (${ownerState})` : `In-state (${ownerState})`]);
+      rows.push(['Owner location', ownerState !== 'TX' ? `Out-of-state (${ownerState})` : `In-state (${ownerState})`,
+        "The owner's mailing-address state. Out-of-state can signal an absentee investor."]);
     }
-    if (row.appr_data_yr) rows.push(['Source', `TCAD ${row.appr_data_yr} appraisal roll`]);
+    if (row.appr_data_yr) rows.push(['Source', `TCAD ${row.appr_data_yr} appraisal roll`,
+      'The TCAD appraisal-roll year these figures come from.']);
 
     return makeSection('Appraisal & Tax', rows);
   }
