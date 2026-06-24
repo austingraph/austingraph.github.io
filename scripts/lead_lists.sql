@@ -36,6 +36,8 @@ select
   round(coalesce(appr_land_val, 0)::numeric / nullif(appr_market_val, 0), 3) as land_share,
   appr_yr_built                                                          as year_built,
   upzoning_gap,
+  round(st_y(st_centroid(geom))::numeric, 6)                             as latitude,
+  round(st_x(st_centroid(geom))::numeric, 6)                             as longitude,
   'https://travis.prodigycad.com/property-detail/' || parcel_id          as tcad_url
 from public.parcels
 where appr_market_val is not null and appr_market_val > 0
@@ -61,6 +63,8 @@ select
   appr_land_val                                                 as land_val,
   appr_impr_val                                                 as impr_val,
   appr_yr_built                                                 as year_built,
+  round(st_y(st_centroid(geom))::numeric, 6)                    as latitude,
+  round(st_x(st_centroid(geom))::numeric, 6)                    as longitude,
   'https://travis.prodigycad.com/property-detail/' || parcel_id as tcad_url
 from public.parcels
 where appr_owner_state is not null
@@ -86,6 +90,8 @@ select
   appr_yr_built                                                 as year_built,
   appr_living_sqft                                              as living_sqft,
   appr_exemptions                                               as exemptions,
+  round(st_y(st_centroid(geom))::numeric, 6)                    as latitude,
+  round(st_x(st_centroid(geom))::numeric, 6)                    as longitude,
   'https://travis.prodigycad.com/property-detail/' || parcel_id as tcad_url
 from public.parcels
 where appr_market_val is not null and appr_market_val > 0
