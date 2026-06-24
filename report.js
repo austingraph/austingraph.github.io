@@ -517,9 +517,12 @@
     const data = window.AG?.lastPanelData;
     if (!data) return;
 
-    const addr = document.getElementById('meta-address')?.textContent?.trim();
-    titleEl.textContent = `Parcel Report — ${data.parcelId}` +
-      (addr && addr !== '—' ? ` · ${addr}` : '');
+    const rawAddr = document.getElementById('meta-address')?.textContent?.trim();
+    const titleCase = (s) => s.toLowerCase().replace(/\b([a-z])/g, (m, c) => c.toUpperCase());
+    const addr = (rawAddr && rawAddr !== '—') ? titleCase(rawAddr) : '';
+    titleEl.textContent = addr
+      ? `Feasibility Report for ${addr}`
+      : `Feasibility Report — Parcel ${data.parcelId}`;
     notesEl.value = '';
     printImg.src = '';
     printImg.style.display = 'none';
