@@ -573,6 +573,17 @@ body {
   position: relative;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
+/* Brand accent strip across the top of the report card */
+#report-modal-inner::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #e8a838, #f0b94a);
+  border-radius: 8px 8px 0 0;
+}
 
 #report-close {
   position: absolute;
@@ -588,11 +599,21 @@ body {
 #report-close:hover { color: #111; }
 
 #report-title {
-  font-size: 18px;
-  font-weight: 700;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+  line-height: 1.15;
   color: #111;
-  margin-bottom: 14px;
+  margin-bottom: 2px;
   padding-right: 32px;
+}
+.report-subtitle {
+  font-size: 12.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #999;
+  margin-bottom: 16px;
 }
 
 #report-toolbar {
@@ -682,6 +703,33 @@ body {
   #report-maps { flex-direction: column; }
   #report-map, #report-locator { flex: none; height: 300px; }
 }
+
+/* On-map basemap control: Aerial / Street / Buildings (top-left) */
+.report-basemap-ctrl {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 5;
+  display: flex;
+  gap: 4px;
+}
+.report-basemap-btn {
+  background: #fff;
+  border: 1px solid #c8c8c8;
+  border-radius: 4px;
+  padding: 4px 9px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #222;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.report-basemap-btn:hover { background: #f2f2f2; }
+.report-basemap-btn.active { background: #e8a838; border-color: #d99a20; color: #111; }
+/* Separate the independent Buildings toggle from the Aerial/Street pair */
+.report-basemap-sep { margin-left: 8px; }
 
 /* Overlay control on each report map (floating button + checkbox dropdown) */
 .report-ovl-ctrl {
