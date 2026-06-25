@@ -111,6 +111,9 @@ body {
 #panel-streetview {
   position: relative;
   height: 190px;
+  /* #panel is a flex column; overflow:hidden makes this item's flex min-size 0,
+     so without flex-shrink:0 it gets crushed to ~0px by the other sections. */
+  flex: 0 0 190px;
   border-radius: 6px;
   overflow: hidden;
   background: rgba(0, 0, 0, 0.35);

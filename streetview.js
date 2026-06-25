@@ -15,7 +15,7 @@
   // window.AG.MAPILLARY_TOKEN before this script loads). It's an app identifier, not
   // a billable key, so it's safe to ship in this static site.
   const MAPILLARY_TOKEN =
-    (window.AG && window.AG.MAPILLARY_TOKEN) || 'REPLACE_WITH_YOUR_MAPILLARY_TOKEN';
+    (window.AG && window.AG.MAPILLARY_TOKEN) || 'MLY|27548508281437137|ecf9f705d577342fd10429e8d8991fbf';
 
   const elWrap   = document.getElementById('panel-streetview');
   const elFrame  = document.getElementById('sv-frame');   // mapillary-js renders here
