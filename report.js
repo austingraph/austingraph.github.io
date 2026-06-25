@@ -445,23 +445,15 @@
     const row2 = document.createElement('div');
     row2.className = 'report-tb-row';
 
-    const annotLbl = document.createElement('span');
-    annotLbl.className = 'report-tool-label';
-    annotLbl.textContent = 'Draw:';
-    row2.appendChild(annotLbl);
-
     const modes = [
-      { label: '↖ Select',    mode: 'select' },
-      { label: '✏️ Freehand', mode: 'freehand' },
-      { label: '📏 Line',     mode: 'linestring' },
-      { label: '⬡ Area',     mode: 'polygon' },
-      { label: '📌 Marker',   mode: 'point' },
+      { label: 'Polygon', mode: 'polygon' },
+      { label: 'Line',    mode: 'linestring' },
+      { label: 'Pin',     mode: 'point' },
     ];
     const modeBtns = {};
     modes.forEach(({ label, mode }) => {
       const btn = document.createElement('button');
       btn.textContent = label;
-      if (mode === 'select') btn.classList.add('active');
       btn.addEventListener('click', () => {
         measuring = false;
         if (reportMap) reportMap.getCanvas().style.cursor = '';
@@ -475,7 +467,7 @@
     });
 
     const measureBtn = document.createElement('button');
-    measureBtn.textContent = '📐 Measure';
+    measureBtn.textContent = 'Measure';
     measureBtn.addEventListener('click', () => {
       measuring = !measuring;
       measureBtn.classList.toggle('active', measuring);
@@ -483,23 +475,12 @@
       if (measuring && draw) {
         draw.setMode('select');
         Object.values(modeBtns).forEach((b) => b.classList.remove('active'));
-        modeBtns.select?.classList.add('active');
       }
     });
     row2.appendChild(measureBtn);
 
-    const undoBtn = document.createElement('button');
-    undoBtn.textContent = 'Undo';
-    undoBtn.addEventListener('click', () => {
-      if (draw) {
-        const ids = draw.getSnapshot().map((f) => f.id);
-        if (ids.length) draw.removeFeatures([ids[ids.length - 1]]);
-      }
-    });
-    row2.appendChild(undoBtn);
-
     const clearAnnotBtn = document.createElement('button');
-    clearAnnotBtn.textContent = 'Clear all';
+    clearAnnotBtn.textContent = 'Clear';
     clearAnnotBtn.addEventListener('click', () => {
       if (draw) draw.clear();
       clearMeasure();
@@ -512,7 +493,7 @@
 
     const printBtn = document.createElement('button');
     printBtn.className = 'primary';
-    printBtn.textContent = 'Print / Save PDF';
+    printBtn.textContent = 'Print';
     printBtn.addEventListener('click', () => {
       reportMap.once('idle', () => {
         try {
