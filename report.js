@@ -17,9 +17,13 @@
   const notesEl   = document.getElementById('report-notes');
   const footerEl  = document.getElementById('report-footer-bar');
   const titleEl   = document.getElementById('report-title');
+  const subtitleEl = document.getElementById('report-subtitle');
 
   // ── Module state ─────────────────────────────────────────────────────────────
   let reportMap    = null;   // MapLibre instance, created lazily and reused
+  // Resets the on-map basemap control (Aerial active, Buildings off, flat pitch);
+  // assigned when attachBasemapControl runs. No-op until then.
+  let resetBasemapControl = () => {};
   let sourcesReady = false;  // true once load handler has added sources+layers
   let pendingGeom  = null;   // parcel geometry waiting to be drawn
 
@@ -48,10 +52,27 @@
         tileSize: 256,
         attribution: 'Tiles &copy; Esri',
       },
+      // Vector buildings (same source the main map uses) for the Buildings toggle.
+      openmaptiles: { type: 'vector', url: 'https://tiles.openfreemap.org/planet' },
     },
     layers: [
       { id: 'bg-aerial', type: 'raster', source: 'aerial' },
       { id: 'bg-street', type: 'raster', source: 'street', layout: { visibility: 'none' } },
+      // Extruded 3D building footprints — hidden until the Buildings button is pressed.
+      {
+        id: 'rp-buildings-3d',
+        type: 'fill-extrusion',
+        source: 'openmaptiles',
+        'source-layer': 'building',
+        minzoom: 13,
+        layout: { visibility: 'none' },
+        paint: {
+          'fill-extrusion-color': 'hsl(35, 8%, 75%)',
+          'fill-extrusion-height': ['get', 'render_height'],
+          'fill-extrusion-base': ['get', 'render_min_height'],
+          'fill-extrusion-opacity': 0.85,
+        },
+      },
     ],
   };
 
@@ -162,6 +183,7 @@
       reportMap.on('click', onMeasureClick);
 
       attachOverlayControl(reportMap, mapEl, 'rp-parcel-outline');
+      attachBasemapControl(reportMap, mapEl);
 
       sourcesReady = true;
       reportMap.resize();
@@ -304,6 +326,57 @@
     });
   }
 
+  // ── On-map basemap control (Aerial / Street / Buildings) ──────────────────────
+  // A floating button row in the map's top-left corner (the Overlays control sits
+  // top-right). Aerial/Street are a mutually-exclusive pair; Buildings is an
+  // independent toggle that shows extruded 3D footprints — and tilts the map so the
+  // extrusions are actually visible (they don't render at pitch 0).
+  function attachBasemapControl(targetMap, container) {
+    if (!container) return;
+
+    const ctrl = document.createElement('div');
+    ctrl.className = 'report-basemap-ctrl';
+
+    const mkBtn = (text, active, extraClass) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'report-basemap-btn' + (extraClass ? ' ' + extraClass : '');
+      b.textContent = text;
+      if (active) b.classList.add('active');
+      return b;
+    };
+
+    const aerialBtn = mkBtn('Aerial', true);
+    const streetBtn = mkBtn('Street', false);
+    const bldgBtn   = mkBtn('Buildings', false, 'report-basemap-sep');
+
+    const showAerial = (aerial) => {
+      if (targetMap.getLayer('bg-aerial')) targetMap.setLayoutProperty('bg-aerial', 'visibility', aerial ? 'visible' : 'none');
+      if (targetMap.getLayer('bg-street')) targetMap.setLayoutProperty('bg-street', 'visibility', aerial ? 'none' : 'visible');
+      aerialBtn.classList.toggle('active', aerial);
+      streetBtn.classList.toggle('active', !aerial);
+    };
+    const setBuildings = (on) => {
+      bldgBtn.classList.toggle('active', on);
+      if (targetMap.getLayer('rp-buildings-3d')) {
+        targetMap.setLayoutProperty('rp-buildings-3d', 'visibility', on ? 'visible' : 'none');
+      }
+      targetMap.easeTo({ pitch: on ? 50 : 0, duration: 500 });
+    };
+
+    aerialBtn.addEventListener('click', () => showAerial(true));
+    streetBtn.addEventListener('click', () => showAerial(false));
+    bldgBtn.addEventListener('click', () => setBuildings(!bldgBtn.classList.contains('active')));
+
+    ctrl.appendChild(aerialBtn);
+    ctrl.appendChild(streetBtn);
+    ctrl.appendChild(bldgBtn);
+    container.appendChild(ctrl);
+
+    // Each report opens flat, aerial, buildings off.
+    resetBasemapControl = () => { showAerial(true); setBuildings(false); };
+  }
+
   // ── Terra-draw annotation ─────────────────────────────────────────────────────
   function initDraw() {
     const TD  = window.terraDraw;
@@ -367,37 +440,8 @@
   function buildToolbar() {
     toolbar.innerHTML = '';
 
-    const row1 = document.createElement('div');
-    row1.className = 'report-tb-row';
-
-    const baseLbl = document.createElement('span');
-    baseLbl.className = 'report-tool-label';
-    baseLbl.textContent = 'Map:';
-    row1.appendChild(baseLbl);
-
-    const aerialBtn = document.createElement('button');
-    aerialBtn.textContent = 'Aerial';
-    aerialBtn.className = 'active';
-    const streetBtn = document.createElement('button');
-    streetBtn.textContent = 'Street';
-    aerialBtn.addEventListener('click', () => {
-      if (reportMap) {
-        reportMap.setLayoutProperty('bg-aerial', 'visibility', 'visible');
-        reportMap.setLayoutProperty('bg-street', 'visibility', 'none');
-      }
-      aerialBtn.classList.add('active'); streetBtn.classList.remove('active');
-    });
-    streetBtn.addEventListener('click', () => {
-      if (reportMap) {
-        reportMap.setLayoutProperty('bg-aerial', 'visibility', 'none');
-        reportMap.setLayoutProperty('bg-street', 'visibility', 'visible');
-      }
-      streetBtn.classList.add('active'); aerialBtn.classList.remove('active');
-    });
-    row1.appendChild(aerialBtn); row1.appendChild(streetBtn);
-    toolbar.appendChild(row1);
-
-    // Row 2: annotation tools + print
+    // Basemap (Aerial/Street) + Buildings now live on the map itself
+    // (attachBasemapControl); the toolbar is just annotation tools + print.
     const row2 = document.createElement('div');
     row2.className = 'report-tb-row';
 
@@ -661,9 +705,11 @@
     const rawAddr = document.getElementById('meta-address')?.textContent?.trim();
     const titleCase = (s) => s.toLowerCase().replace(/\b([a-z])/g, (m, c) => c.toUpperCase());
     const addr = (rawAddr && rawAddr !== '—') ? titleCase(rawAddr) : '';
-    titleEl.textContent = addr
-      ? `Feasibility Report for ${addr}`
-      : `Feasibility Report — Parcel ${data.parcelId}`;
+    // Address is the headline; the subtitle names the report and the parcel.
+    titleEl.textContent = addr || `Parcel ${data.parcelId}`;
+    if (subtitleEl) {
+      subtitleEl.textContent = `Feasibility & Appraisal Report · Parcel ${data.parcelId}`;
+    }
     notesEl.value = '';
     printImg.src = '';
     printImg.style.display = 'none';
@@ -689,6 +735,7 @@
       reportMap.resize();
       if (draw) draw.clear();
       clearMeasure();
+      resetBasemapControl();   // back to flat / aerial / buildings off
       applyPending();
     }
 
