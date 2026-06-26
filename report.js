@@ -34,6 +34,7 @@
   let measuring  = false;
   let measurePts = [];
   let demoCtr    = 0;        // stale-fetch guard for demographics
+  let valCtr     = 0;        // stale-fetch guard for value-context ($/sqft percentiles)
 
   // ── Basemap style ─────────────────────────────────────────────────────────────
   const REPORT_STYLE = {
@@ -635,7 +636,94 @@
       bar.innerHTML = splitHtml;
       sec.insertBefore(bar, sec.children[1]); // after title, before the <dl>
     }
+
+    // Placeholder for the $/sqft neighborhood-percentile bars, filled async by
+    // fetchValueContext(). Stays empty (and invisible) if the RPC isn't present.
+    const vctx = document.createElement('div');
+    vctx.className = 'value-context';
+    vctx.id = 'report-value-ctx';
+    sec.insertBefore(vctx, sec.children[splitHtml ? 2 : 1]); // after the split bar (or title)
     return sec;
+  }
+
+  // ── $/sqft neighborhood percentile (parcel_value_context RPC) ────────────────
+  const ordinal = (n) => {
+    const s = ['th', 'st', 'nd', 'rd'], v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
+  };
+
+  function makePercentileBar(label, m, zoning) {
+    if (!m || m.value == null || m.percentile == null) return null;
+    const pct = Math.max(0, Math.min(100, Math.round(m.percentile)));
+    const usd = (n) => '$' + Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+    const row = document.createElement('div');
+    row.className = 'pctl-row';
+
+    const lab = document.createElement('div');
+    lab.className = 'pctl-label';
+    lab.textContent = label;
+    const ic = document.createElement('span');
+    ic.className = 'info-icon';
+    const tip = `Where this parcel's ${label.toLowerCase()} falls among the ${m.n} nearest ${zoning || 'same-zoning'} parcels. Higher = pricier than neighbors; a low building $/sqft percentile can flag an older or under-built improvement (a redevelopment signal).`;
+    ic.setAttribute('data-tip', tip);
+    ic.setAttribute('aria-label', tip);
+    ic.setAttribute('tabindex', '0');
+    ic.textContent = 'i';
+    lab.appendChild(ic);
+
+    const track = document.createElement('div');
+    track.className = 'pctl-track';
+    track.innerHTML =
+      `<span class="pctl-fill" style="width:${pct}%"></span>` +
+      `<span class="pctl-median" title="cohort median"></span>` +
+      `<span class="pctl-mark" style="left:${pct}%"></span>`;
+
+    const cap = document.createElement('div');
+    cap.className = 'pctl-cap';
+    cap.textContent = `${usd(m.value)}/sqft · ${ordinal(pct)} percentile · median ${usd(m.median)} · ${m.n} nearby ${zoning || ''}`.trim();
+
+    row.appendChild(lab);
+    row.appendChild(track);
+    row.appendChild(cap);
+    return row;
+  }
+
+  function renderValueContext(d) {
+    const box = document.getElementById('report-value-ctx');
+    if (!box) return;
+    const bars = [
+      makePercentileBar('Building $/sqft', d.building_psf, d.zoning_base),
+      makePercentileBar('Land $/sqft', d.land_psf, d.zoning_base),
+    ].filter(Boolean);
+    if (!bars.length) return;            // nothing to show; leave hidden
+
+    box.innerHTML = '';
+    const h = document.createElement('div');
+    h.className = 'value-context-title';
+    h.textContent = `Value vs. nearby ${d.zoning_base || 'parcels'}`;
+    box.appendChild(h);
+    bars.forEach((b) => box.appendChild(b));
+    box.classList.add('has-data');
+  }
+
+  function fetchValueContext(parcelId, token) {
+    fetch(`${window.AG.SUPABASE_URL}/rest/v1/rpc/parcel_value_context`, {
+      method: 'POST',
+      headers: {
+        apikey: window.AG.SUPABASE_KEY,
+        Authorization: `Bearer ${window.AG.SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ p_parcel_id: parcelId }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (token !== valCtr) return;                  // a newer parcel was opened
+        if (!modal.classList.contains('open')) return;
+        if (d && d.status === 'ok') renderValueContext(d);
+      })
+      .catch(() => {});                                // RPC absent / offline: stay hidden
   }
 
   // Affordability lens — reframes value in housing-affordability terms (planner
@@ -767,6 +855,7 @@
 
     const demoToken = ++demoCtr;
     seedFeasibility(data.parcelId, demoToken);
+    fetchValueContext(data.parcelId, ++valCtr);
 
     pendingGeom = data.geometry;
 

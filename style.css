@@ -172,6 +172,51 @@ body {
 /* In the report (light bg) the bar sits between the title and the rows. */
 .report-value-split { margin: 2px 0 12px; }
 
+/* ── $/sqft neighborhood-percentile bars (report) ──────────────────────────── */
+.value-context { margin: 2px 0 12px; }
+.value-context.has-data { margin-bottom: 14px; }
+.value-context-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #888;
+  margin-bottom: 8px;
+}
+.pctl-row { margin-bottom: 11px; }
+.pctl-row:last-child { margin-bottom: 0; }
+.pctl-label { font-size: 12px; font-weight: 500; color: #444; margin-bottom: 4px; }
+.pctl-track {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: #ececec;
+  overflow: visible;
+}
+.pctl-fill {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  border-radius: 4px;
+  background: #e8a838;            /* gold, matches the value palette */
+}
+.pctl-median {                    /* faint cohort-median tick at 50% */
+  position: absolute;
+  left: 50%; top: -2px; bottom: -2px;
+  width: 1px;
+  background: rgba(0, 0, 0, 0.28);
+}
+.pctl-mark {                      /* this parcel's position */
+  position: absolute;
+  top: 50%;
+  width: 11px; height: 11px;
+  border-radius: 50%;
+  background: #b8860b;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+  transform: translate(-50%, -50%);
+}
+.pctl-cap { font-size: 11px; color: #777; margin-top: 5px; }
+
 /* ── Connections (knowledge graph) ────────────────────────────────────────── */
 .conn-group { display: flex; flex-direction: column; gap: 10px; }
 .conn-group:not(:empty) { margin-top: 10px; }
