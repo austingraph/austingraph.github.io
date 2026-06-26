@@ -146,6 +146,32 @@ body {
   pointer-events: none;
 }
 
+/* ── Land-vs-building value-composition bar (panel + report) ───────────────── */
+.value-split { margin: 4px 0 2px; }
+.value-bar {
+  display: flex;
+  height: 14px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: rgba(127, 127, 127, 0.25);
+}
+.value-bar .seg-land { background: #2e8b57; }   /* land — green */
+.value-bar .seg-bldg { background: #e8a838; }   /* building — gold */
+.vs-cap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 5px;
+  font-size: 11px;
+  color: #999;
+}
+.vs-cap span { display: flex; align-items: center; gap: 5px; }
+.vs-dot { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+.vs-dot.land { background: #2e8b57; }
+.vs-dot.bldg { background: #e8a838; }
+/* In the report (light bg) the bar sits between the title and the rows. */
+.report-value-split { margin: 2px 0 12px; }
+
 /* ── Connections (knowledge graph) ────────────────────────────────────────── */
 .conn-group { display: flex; flex-direction: column; gap: 10px; }
 .conn-group:not(:empty) { margin-top: 10px; }

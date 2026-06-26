@@ -149,8 +149,29 @@ function fmtUSD(n) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
 }
 
+// Land-vs-building value-composition bar. Returns an HTML string (a stacked bar
+// + captioned legend) or '' when there's nothing to show. Shared with report.js
+// via window.AG so the panel and the report render the same visual.
+function makeValueSplit(land, impr) {
+  const l = +land || 0, b = +impr || 0, t = l + b;
+  if (t <= 0) return '';
+  const lp = Math.round((l / t) * 100), bp = 100 - lp;
+  return (
+    `<div class="value-bar">` +
+      `<span class="seg-land" style="width:${lp}%"></span>` +
+      `<span class="seg-bldg" style="width:${bp}%"></span>` +
+    `</div>` +
+    `<div class="vs-cap">` +
+      `<span><i class="vs-dot land"></i>Land ${lp}%</span>` +
+      `<span><i class="vs-dot bldg"></i>Building ${bp}%</span>` +
+    `</div>`
+  );
+}
+window.AG.makeValueSplit = makeValueSplit;
+
 function renderAppraisal(row) {
   const dash = '—';
+  const elApprSplit = document.getElementById('appr-split');
   // Stash the full DB row so the Parcel Report can build the complete
   // appraisal/tax block + derived investor signals without re-fetching.
   if (window.AG.lastPanelData) window.AG.lastPanelData.dbRow = row || null;
@@ -159,7 +180,15 @@ function renderAppraisal(row) {
     [elApprMarket, elApprAssessed, elApprTax, elApprOwner]
       .forEach((el) => { el.textContent = dash; });
     elApprStatus.textContent = row ? 'No appraisal data for this parcel.' : '';
+    if (elApprSplit) { elApprSplit.style.display = 'none'; elApprSplit.innerHTML = ''; }
     return;
+  }
+
+  // Land-vs-building composition bar (hidden when the split can't be computed).
+  if (elApprSplit) {
+    const html = makeValueSplit(row.appr_land_val, row.appr_impr_val);
+    elApprSplit.innerHTML = html;
+    elApprSplit.style.display = html ? 'block' : 'none';
   }
 
   const assessed = row.appr_assessed_val;

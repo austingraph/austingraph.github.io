@@ -558,6 +558,8 @@
     dataEl.appendChild(feasCol);
 
     detailCol.appendChild(buildAppraisalSection(data));
+    const aff = buildAffordabilitySection(data);
+    if (aff) detailCol.appendChild(aff);
   }
 
   // Full appraisal/tax block + derived investor signals, from the row stashed by
@@ -623,7 +625,66 @@
     if (row.appr_data_yr) rows.push(['Source', `TCAD ${row.appr_data_yr} appraisal roll`,
       'The TCAD appraisal-roll year these figures come from.']);
 
-    return makeSection('Appraisal & Tax', rows);
+    const sec = makeSection('Appraisal & Tax', rows);
+
+    // Land-vs-building value-composition bar, just under the section title.
+    const splitHtml = window.AG.makeValueSplit ? window.AG.makeValueSplit(land, impr) : '';
+    if (splitHtml) {
+      const bar = document.createElement('div');
+      bar.className = 'value-split report-value-split';
+      bar.innerHTML = splitHtml;
+      sec.insertBefore(bar, sec.children[1]); // after title, before the <dl>
+    }
+    return sec;
+  }
+
+  // Affordability lens — reframes value in housing-affordability terms (planner
+  // view) and valuation context (RE-pro view), from the parcel value + the ACS
+  // demographics neighborhood.js cached on lastPanelData. Returns null when there
+  // are no neighborhood inputs to compute.
+  function buildAffordabilitySection(data) {
+    const row = data.dbRow || {};
+    const market = row.appr_market_val;
+    if (market == null) return null;
+
+    const demo   = (window.AG && window.AG.lastPanelData && window.AG.lastPanelData.demographics) || null;
+    const income = demo && demo.median_hh_income;
+    const rent   = demo && demo.median_gross_rent;
+
+    const taxRate = window.AG.APPROX_TAX_RATE || 0.02;
+    const estTax  = Math.round((row.appr_assessed_val || market) * taxRate);
+    const usd = (n) => (n != null && isFinite(n)) ? '$' + Math.round(n).toLocaleString() : '—';
+
+    // Transparent ownership-cost assumptions (surfaced in the tooltip).
+    const RATE = 0.065, DOWN = 0.20, TERM = 360, INS = 0.005;
+    const monthlyPI = (principal) => {
+      const r = RATE / 12;
+      return principal * r / (1 - Math.pow(1 + r, -TERM));
+    };
+
+    const rows = [];
+    if (income) {
+      rows.push(['Price-to-income', `${(market / income).toFixed(1)}× median local income`,
+        'Market value ÷ neighborhood median household income (ACS). A standard affordability gauge — roughly 3–5× is generally considered affordable; higher means pricier relative to local incomes.']);
+      rows.push(['Tax burden vs income', `${(estTax / income * 100).toFixed(1)}% of median income`,
+        'Estimated annual property tax ÷ neighborhood median household income (ACS).']);
+    }
+    if (rent) {
+      const own = monthlyPI(market * (1 - DOWN)) + estTax / 12 + (market * INS) / 12;
+      rows.push(['Own vs. rent (monthly)', `Own ≈ ${usd(own)}/mo vs. rent ≈ ${usd(rent)}/mo`,
+        `Rough monthly cost to own (20% down, ${(RATE * 100).toFixed(1)}% / 30-yr mortgage, plus est. tax & insurance; excludes maintenance, HOA & PMI) vs. neighborhood median gross rent (ACS).`]);
+    }
+    if (demo && demo.cost_burden_pct != null) {
+      rows.push(['Neighborhood cost burden', `${demo.cost_burden_pct}% of renters`,
+        'Share of local renters paying 30%+ of income on rent (ACS) — a cost-burden measure.']);
+    }
+    if (!rows.length) return null;
+
+    if (demo && demo.acs_vintage) {
+      rows.push(['Source', `Incomes & rents: ACS ${demo.acs_vintage} 5-yr (block group)`,
+        'Affordability inputs come from the U.S. Census ACS for the block group containing this parcel; value & tax are TCAD/parcel-level.']);
+    }
+    return makeSection('Affordability', rows);
   }
 
   function buildFooter(data) {
