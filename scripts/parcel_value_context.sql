@@ -13,7 +13,7 @@
 -- below this parcel's $/sqft (higher = pricier than its neighbors).
 --
 -- NOTE: re-run this after load_tcad_appraisal.py populates appr_neighborhood /
--- appr_land_acres so the neighborhood cohort + authoritative lot sizes take effect.
+-- appr_land_sqft so the neighborhood cohort + authoritative lot sizes take effect.
 --
 -- Run once in the Supabase SQL editor. Safe to re-run (create or replace).
 -- Mirrors the security pattern of public.parcel_demographics.
@@ -43,7 +43,7 @@ begin
   -- Target parcel: centroid, zoning, TCAD neighborhood, value parts, and lot size
   -- (land-segment acres if present, else TCAD acres, else the geodesic polygon area).
   select centroid, zoning_base, appr_neighborhood, appr_land_val, appr_impr_val, appr_living_sqft,
-         coalesce(nullif(appr_land_acres, 0) * 43560,
+         coalesce(nullif(appr_land_sqft, 0),
                   nullif((metadata->>'tcad_acres')::numeric, 0) * 43560,
                   nullif(st_area(geom::geography) * 10.7639104, 0))
     into v_ctr, v_zoning, v_hood, v_land, v_impr, v_sqft, v_lotsqft
@@ -90,7 +90,7 @@ begin
     v_lpsf := v_land::numeric / v_lotsqft;
     with cohort as (
       select appr_land_val::numeric /
-             coalesce(nullif(appr_land_acres, 0) * 43560,
+             coalesce(nullif(appr_land_sqft, 0),
                       nullif((metadata->>'tcad_acres')::numeric, 0) * 43560,
                       nullif(st_area(geom::geography) * 10.7639104, 0)) as psf
         from public.parcels

@@ -319,7 +319,13 @@ def iter_property_rows(zf, fname, target_yr, impr_map):
             hood = fld(line, P, "hood_cd").strip() or None
             state_cd = (fld(line, P, "imprv_state_cd").strip()
                         or fld(line, P, "land_state_cd").strip() or None)
-            land_acres = num_fld(line, P, "land_acres") or num_fld(line, P, "legal_acreage")
+            # The "land_acres" field is actually square feet (verified vs land $/sqft);
+            # fall back to legal_acreage (true acres, 4-dec) × 43560 when it's blank.
+            land_sqft = num_fld(line, P, "land_acres")
+            if not land_sqft:
+                acres = num_fld(line, P, "legal_acreage")
+                land_sqft = acres * 43560 if acres else None
+            land_sqft = int(land_sqft) if land_sqft else None
             deed_date = date_fld(line, P, "deed_dt")
 
             # Improvement detail (yr_built, main-living vs gross area, class)
@@ -341,7 +347,7 @@ def iter_property_rows(zf, fname, target_yr, impr_map):
                 "appr_class":        det.get("cls"),
                 "appr_neighborhood": hood,
                 "appr_state_cd":     state_cd,
-                "appr_land_acres":   land_acres,
+                "appr_land_sqft":    land_sqft,
                 "appr_deed_date":    deed_date,
                 "appr_owner_name":   owner_name or None,
                 "appr_owner_state":  owner_state,
@@ -367,7 +373,7 @@ def upsert_batch(conn, batch):
           appr_class         = %(appr_class)s,
           appr_neighborhood  = %(appr_neighborhood)s,
           appr_state_cd      = %(appr_state_cd)s,
-          appr_land_acres    = %(appr_land_acres)s,
+          appr_land_sqft     = %(appr_land_sqft)s,
           appr_deed_date     = %(appr_deed_date)s,
           appr_owner_name    = %(appr_owner_name)s,
           appr_owner_state   = %(appr_owner_state)s,
@@ -448,6 +454,24 @@ def main():
                             if i >= 3:
                                 break
                             print(repr(raw[:200]))
+                # Improvement-detail type vocabulary — drives the living-area filter.
+                if impr_file:
+                    from collections import Counter
+                    cnt, area = Counter(), Counter()
+                    with zf.open(impr_file) as fh:
+                        for raw in io.TextIOWrapper(fh, encoding="latin-1", errors="replace"):
+                            line = raw.rstrip("\r\n")
+                            if len(line) < D["imprv_det_area"][1]:
+                                continue
+                            key = f"{fld(line, D, 'type_cd').strip():8s} {fld(line, D, 'type_desc').strip()}"
+                            cnt[key] += 1
+                            try:
+                                area[key] += int(float(fld(line, D, "imprv_det_area").strip() or 0))
+                            except ValueError:
+                                pass
+                    print("\n=== IMPR DETAIL type vocabulary (count · total area · type_cd desc) ===")
+                    for key, c in cnt.most_common(50):
+                        print(f"  {c:9,d}  {area[key]:16,d} sqft  {key}")
                 return
 
             if not prop_file:

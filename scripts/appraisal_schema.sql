@@ -21,7 +21,7 @@ alter table public.parcels
   add column if not exists appr_class        text,         -- construction class/quality of the main improvement
   add column if not exists appr_neighborhood text,         -- TCAD mass-appraisal neighborhood code (hood_cd)
   add column if not exists appr_state_cd     text,         -- PTAD state category (A1 single-fam, B multifam, C vacant, F commercial, …)
-  add column if not exists appr_land_acres   numeric(12,4),-- land-segment acreage (authoritative lot size)
+  add column if not exists appr_land_sqft    int,          -- land-segment size in SQUARE FEET (authoritative lot size)
   add column if not exists appr_deed_date    date,         -- last recorded deed date (transfer signal; NOT a sale price)
   add column if not exists appr_owner_name   text,         -- owner name as of Jan 1
   add column if not exists appr_owner_state  text,         -- owner mailing state ('TX' vs other)
