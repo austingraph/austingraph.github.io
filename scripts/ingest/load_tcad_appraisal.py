@@ -31,6 +31,7 @@ Each run also snapshots the roll year into public.parcel_appraisal_history.
 import argparse
 import io
 import os
+import re
 from datetime import datetime
 import sys
 import tempfile
@@ -151,9 +152,18 @@ def date_fld(line, spec, key):
     return None
 
 
-# Improvement-detail type_desc substring that marks the MAIN living area (vs.
-# garage/porch/pool/etc.). Verify the real values with --inspect and adjust.
-LIVING_HINT = "MAIN"
+# Living / finished building area is floor-coded in TCAD's improvement detail:
+# 1ST/2ND/3RD/… (numbered floors), 1/2 (half floor), RSBLW (residence below),
+# 881 (commercial finishout). Everything else is a structure (garage, porch,
+# canopy, deck, …) or a feature COUNT (bathroom, fireplace, sprinkler heads) —
+# not living area. SO (sketch only) is a fallback when a building has no floor
+# breakdown. Derived from the --inspect type histogram of the real roll.
+_FLOOR_RE = re.compile(r"^\d+(ST|ND|RD|TH)$")
+_LIVING_EXTRA = {"1/2", "RSBLW", "881"}
+
+
+def is_floor(type_cd):
+    return bool(_FLOOR_RE.match(type_cd)) or type_cd in _LIVING_EXTRA
 
 
 # ── Streaming download ────────────────────────────────────────────────────────
@@ -182,12 +192,13 @@ def find_file(zf, *patterns):
 
 # ── Parse APPRAISAL_IMPROVEMENT_DETAIL.TXT ───────────────────────────────────
 def load_impr_detail(zf, fname, target_yr):
-    """Return dict: prop_id_str → {yr_built, gross, living, cls}.
+    """Return dict: prop_id_str → {yr_built, living, cls}.
 
-    gross  = total of all improvement-detail areas (living + garage + porch + …)
-    living = total of detail rows whose type marks main living area (LIVING_HINT);
-             falls back to gross when no living rows are detected, so sqft is never lost.
-    cls    = construction class of the largest living detail row (dominant quality).
+    living = sum of finished floor areas (1ST/2ND/…/RSBLW/881); if a building has
+             no floor rows, falls back to its SKETCH-ONLY (SO) area so sketched-
+             but-undetailed buildings still get a size. Excludes garages, porches,
+             canopies, decks and feature counts (bathroom, fireplace, sprinklers).
+    cls    = construction class of the largest floor row (dominant quality).
     """
     print(f"  Parsing {fname} …", flush=True)
     result = {}
@@ -208,7 +219,7 @@ def load_impr_detail(zf, fname, target_yr):
                 continue
             yr_built_raw = fld(line, D, "yr_built").strip()
             area_raw = fld(line, D, "imprv_det_area").strip()
-            desc = fld(line, D, "type_desc").strip().upper()
+            tcd = fld(line, D, "type_cd").strip().upper()
             cls = fld(line, D, "class_cd").strip()
             try:
                 yr_built = int(yr_built_raw) if yr_built_raw and yr_built_raw != "0" else None
@@ -221,25 +232,25 @@ def load_impr_detail(zf, fname, target_yr):
 
             rec = result.get(pid)
             if rec is None:
-                rec = {"yr_built": None, "gross": 0, "living": 0, "cls": None, "_lmax": 0}
+                rec = {"yr_built": None, "floor": 0, "sketch": 0, "cls": None, "_fmax": 0}
                 result[pid] = rec
             if yr_built:
                 rec["yr_built"] = min(filter(None, [rec["yr_built"], yr_built]))
-            rec["gross"] += area
-            if LIVING_HINT in desc:                 # main living area
-                rec["living"] += area
-                if area >= rec["_lmax"]:            # track the dominant living row's class
-                    rec["_lmax"] = area
+            if is_floor(tcd):
+                rec["floor"] += area
+                if area >= rec["_fmax"]:            # dominant floor row → its class
+                    rec["_fmax"] = area
                     if cls:
                         rec["cls"] = cls
+            elif tcd == "SO":
+                rec["sketch"] += area
 
-    # Fallback: no detected living rows → use gross so we don't drop the sqft.
-    for rec in result.values():
-        if rec["living"] == 0:
-            rec["living"] = rec["gross"]
-        rec.pop("_lmax", None)
-    print(f"  Improvement details: {len(result):,} properties", flush=True)
-    return result
+    out = {}
+    for pid, rec in result.items():
+        living = rec["floor"] or rec["sketch"] or None
+        out[pid] = {"yr_built": rec["yr_built"], "living": living, "cls": rec["cls"]}
+    print(f"  Improvement details: {len(out):,} properties", flush=True)
+    return out
 
 
 # ── Parse APPRAISAL_INFO.TXT and yield rows ───────────────────────────────────
@@ -342,8 +353,7 @@ def iter_property_rows(zf, fname, target_yr, impr_map):
                 "appr_cap_loss":     cap_loss or None,
                 "appr_exemptions":   exemptions if exemptions else None,
                 "appr_yr_built":     det.get("yr_built"),
-                "appr_living_sqft":  det.get("living") or None,
-                "appr_gross_sqft":   det.get("gross") or None,
+                "appr_living_sqft":  det.get("living"),
                 "appr_class":        det.get("cls"),
                 "appr_neighborhood": hood,
                 "appr_state_cd":     state_cd,
@@ -369,7 +379,6 @@ def upsert_batch(conn, batch):
           appr_exemptions    = %(appr_exemptions)s,
           appr_yr_built      = %(appr_yr_built)s,
           appr_living_sqft   = %(appr_living_sqft)s,
-          appr_gross_sqft    = %(appr_gross_sqft)s,
           appr_class         = %(appr_class)s,
           appr_neighborhood  = %(appr_neighborhood)s,
           appr_state_cd      = %(appr_state_cd)s,
@@ -489,7 +498,7 @@ def main():
             # Stream property file, batch upsert
             print(f"\nParsing {prop_file} …", flush=True)
             batch = []
-            total = updated = 0
+            total = updated = res_shown = 0
             t0 = time.time()
 
             for row in iter_property_rows(zf, prop_file, target_yr, impr_map):
@@ -497,6 +506,12 @@ def main():
                 if dry:
                     if total <= 3:
                         print(row)
+                    # Also surface a few homesteaded (residential) parcels so the
+                    # deed date, cap loss and living area can be sanity-checked.
+                    elif res_shown < 3 and row.get("appr_exemptions") \
+                            and "HS" in row["appr_exemptions"]:
+                        print("RES:", row)
+                        res_shown += 1
                     continue
                 batch.append(row)
                 if len(batch) >= BATCH:

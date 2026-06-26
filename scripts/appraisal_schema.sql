@@ -16,8 +16,7 @@ alter table public.parcels
   add column if not exists appr_cap_loss     bigint,       -- homestead 10% cap loss (market − appraised); equity/tenure signal
   add column if not exists appr_exemptions   text[],       -- e.g. '{HS,OV65}'
   add column if not exists appr_yr_built     smallint,     -- year improvements built
-  add column if not exists appr_living_sqft  int,          -- MAIN living area (sq ft); excludes garage/porch/etc.
-  add column if not exists appr_gross_sqft   int,          -- total improvement area (all detail rows)
+  add column if not exists appr_living_sqft  int,          -- finished floor area (sq ft); excludes garage/porch/etc.
   add column if not exists appr_class        text,         -- construction class/quality of the main improvement
   add column if not exists appr_neighborhood text,         -- TCAD mass-appraisal neighborhood code (hood_cd)
   add column if not exists appr_state_cd     text,         -- PTAD state category (A1 single-fam, B multifam, C vacant, F commercial, …)
@@ -42,8 +41,7 @@ comment on column public.parcels.appr_assessed_val is 'Assessed value after 10% 
 comment on column public.parcels.appr_taxable_val  is 'Proxy for taxable value (= assessed_val); actual varies by taxing entity';
 comment on column public.parcels.appr_cap_loss     is 'Homestead 10% cap loss (market − appraised); larger = longer-held / more suppressed below market';
 comment on column public.parcels.appr_exemptions   is 'Exemption codes: HS, OV65, DP, VET, AG, AB, EX';
-comment on column public.parcels.appr_living_sqft  is 'Main living area (sq ft); excludes garage/porch/etc. Use for building $/sqft';
-comment on column public.parcels.appr_gross_sqft   is 'Total improvement area across all detail rows (living + garage + porch + …)';
+comment on column public.parcels.appr_living_sqft  is 'Finished floor area (sq ft); excludes garage/porch/etc. Use for building $/sqft';
 comment on column public.parcels.appr_neighborhood is 'TCAD mass-appraisal neighborhood code (hood_cd); the truest comp cohort';
 comment on column public.parcels.appr_state_cd     is 'PTAD state category code (A1, B, C1, F1, …) — land-use classification';
 comment on column public.parcels.appr_deed_date    is 'Last recorded deed date — a transfer (not sale-price) signal; Texas is non-disclosure';
