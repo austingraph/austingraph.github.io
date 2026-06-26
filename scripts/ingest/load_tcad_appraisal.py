@@ -18,13 +18,20 @@ Environment:
   DATABASE_URL          Supabase session-pooler Postgres connection string (service role)
 
 Field layout source: Website_Legacy8.0.32-AppraisalExportLayout.xlsx (TCAD public)
-  APPRAISAL_INFO.TXT   (short: PROP.TXT)         — property values & owner
-  APPRAISAL_IMPROVEMENT_DETAIL.TXT (IMP_DET.TXT) — yr_built, improvement area
+  APPRAISAL_INFO.TXT   (short: PROP.TXT)         — values, owner, neighborhood,
+                                                   state category, lot acreage, deed date
+  APPRAISAL_IMPROVEMENT_DETAIL.TXT (IMP_DET.TXT) — yr_built, living vs gross area, class
+
+Writes per parcel: market/land/impr/appraised/assessed/taxable value, homestead
+cap loss, exemptions, year built, living & gross sqft, construction class, TCAD
+neighborhood, PTAD state category, land acreage, last deed date, owner state.
+Each run also snapshots the roll year into public.parcel_appraisal_history.
 """
 
 import argparse
 import io
 import os
+from datetime import datetime
 import sys
 import tempfile
 import time
@@ -50,6 +57,13 @@ P = {
     "ten_percent_cap":  (1931, 1945),
     "assessed_val":     (1946, 1960),
     "market_value":     (4214, 4227),
+    # Additional fields (positions verified against the 8.0.32 export layout)
+    "legal_acreage":    (1660, 1675),
+    "hood_cd":          (1686, 1695),   # TCAD mass-appraisal neighborhood
+    "deed_dt":          (2034, 2058),   # last recorded deed date (transfer signal)
+    "imprv_state_cd":   (2732, 2741),   # PTAD category of the improvement
+    "land_state_cd":    (2742, 2751),   # PTAD category of the land
+    "land_acres":       (2772, 2791),   # sum of land-segment acres
     # Exemption flags — 'T' = True, 'F' / ' ' = False
     "hs_exempt":        (2609, 2609),
     "ov65_exempt":      (2610, 2610),
@@ -109,6 +123,39 @@ def flag(line, spec, key):
     return fld(line, spec, key).strip().upper() == "T"
 
 
+def num_fld(line, spec, key, default=None):
+    """Decimal field (e.g. acreage). Returns float or default."""
+    try:
+        v = fld(line, spec, key).strip()
+        return float(v) if v else default
+    except ValueError:
+        return default
+
+
+_DEED_FMTS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%m/%d/%Y %H:%M:%S",
+              "%m/%d/%Y", "%Y%m%d")
+
+
+def date_fld(line, spec, key):
+    """Parse the 25-char deed-date field into a date, or None. Format is not
+    guaranteed across rolls — confirm with --inspect if deed dates come back null."""
+    v = fld(line, spec, key).strip()
+    if not v:
+        return None
+    v = v.split(".")[0].strip()        # drop fractional seconds if present
+    for f in _DEED_FMTS:
+        try:
+            return datetime.strptime(v, f).date()
+        except ValueError:
+            continue
+    return None
+
+
+# Improvement-detail type_desc substring that marks the MAIN living area (vs.
+# garage/porch/pool/etc.). Verify the real values with --inspect and adjust.
+LIVING_HINT = "MAIN"
+
+
 # ── Streaming download ────────────────────────────────────────────────────────
 def download(url, dest):
     print(f"Downloading {url} …", flush=True)
@@ -135,7 +182,13 @@ def find_file(zf, *patterns):
 
 # ── Parse APPRAISAL_IMPROVEMENT_DETAIL.TXT ───────────────────────────────────
 def load_impr_detail(zf, fname, target_yr):
-    """Return dict: prop_id_str → (yr_built, total_area)."""
+    """Return dict: prop_id_str → {yr_built, gross, living, cls}.
+
+    gross  = total of all improvement-detail areas (living + garage + porch + …)
+    living = total of detail rows whose type marks main living area (LIVING_HINT);
+             falls back to gross when no living rows are detected, so sqft is never lost.
+    cls    = construction class of the largest living detail row (dominant quality).
+    """
     print(f"  Parsing {fname} …", flush=True)
     result = {}
     with zf.open(fname) as fh:
@@ -155,6 +208,8 @@ def load_impr_detail(zf, fname, target_yr):
                 continue
             yr_built_raw = fld(line, D, "yr_built").strip()
             area_raw = fld(line, D, "imprv_det_area").strip()
+            desc = fld(line, D, "type_desc").strip().upper()
+            cls = fld(line, D, "class_cd").strip()
             try:
                 yr_built = int(yr_built_raw) if yr_built_raw and yr_built_raw != "0" else None
             except ValueError:
@@ -163,12 +218,26 @@ def load_impr_detail(zf, fname, target_yr):
                 area = int(float(area_raw)) if area_raw else 0
             except ValueError:
                 area = 0
-            if pid in result:
-                existing_yr, existing_area = result[pid]
-                new_yr = min(filter(None, [existing_yr, yr_built])) if (existing_yr or yr_built) else None
-                result[pid] = (new_yr, existing_area + area)
-            else:
-                result[pid] = (yr_built, area)
+
+            rec = result.get(pid)
+            if rec is None:
+                rec = {"yr_built": None, "gross": 0, "living": 0, "cls": None, "_lmax": 0}
+                result[pid] = rec
+            if yr_built:
+                rec["yr_built"] = min(filter(None, [rec["yr_built"], yr_built]))
+            rec["gross"] += area
+            if LIVING_HINT in desc:                 # main living area
+                rec["living"] += area
+                if area >= rec["_lmax"]:            # track the dominant living row's class
+                    rec["_lmax"] = area
+                    if cls:
+                        rec["cls"] = cls
+
+    # Fallback: no detected living rows → use gross so we don't drop the sqft.
+    for rec in result.values():
+        if rec["living"] == 0:
+            rec["living"] = rec["gross"]
+        rec.pop("_lmax", None)
     print(f"  Improvement details: {len(result):,} properties", flush=True)
     return result
 
@@ -242,22 +311,41 @@ def iter_property_rows(zf, fname, target_yr, impr_map):
             if flag(line, P, "ex_exempt"):
                 exemptions.append("EX")
 
-            # Improvement detail (yr_built + area)
-            impr_yr, impr_area = impr_map.get(pid, (None, None))
+            # Cap loss (market − appraised under the homestead 10% cap) and the
+            # appraised value (post-cap, pre-exemption).
+            cap_loss = int_fld(line, P, "ten_percent_cap")
+
+            # Classification, lot size, neighborhood, last-transfer date.
+            hood = fld(line, P, "hood_cd").strip() or None
+            state_cd = (fld(line, P, "imprv_state_cd").strip()
+                        or fld(line, P, "land_state_cd").strip() or None)
+            land_acres = num_fld(line, P, "land_acres") or num_fld(line, P, "legal_acreage")
+            deed_date = date_fld(line, P, "deed_dt")
+
+            # Improvement detail (yr_built, main-living vs gross area, class)
+            det = impr_map.get(pid) or {}
 
             yield {
-                "parcel_id":        pid,
-                "appr_market_val":  market_val or None,
-                "appr_land_val":    land_val or None,
-                "appr_impr_val":    impr_val or None,
+                "parcel_id":         pid,
+                "appr_market_val":   market_val or None,
+                "appr_land_val":     land_val or None,
+                "appr_impr_val":     impr_val or None,
+                "appr_appraised_val": appraised_val or None,
                 "appr_assessed_val": assessed_val or None,
-                "appr_taxable_val": assessed_val or None,
-                "appr_exemptions":  exemptions if exemptions else None,
-                "appr_yr_built":    impr_yr,
-                "appr_living_sqft": impr_area or None,
-                "appr_owner_name":  owner_name or None,
-                "appr_owner_state": owner_state,
-                "appr_data_yr":     int(yr) if yr else target_yr,
+                "appr_taxable_val":  assessed_val or None,
+                "appr_cap_loss":     cap_loss or None,
+                "appr_exemptions":   exemptions if exemptions else None,
+                "appr_yr_built":     det.get("yr_built"),
+                "appr_living_sqft":  det.get("living") or None,
+                "appr_gross_sqft":   det.get("gross") or None,
+                "appr_class":        det.get("cls"),
+                "appr_neighborhood": hood,
+                "appr_state_cd":     state_cd,
+                "appr_land_acres":   land_acres,
+                "appr_deed_date":    deed_date,
+                "appr_owner_name":   owner_name or None,
+                "appr_owner_state":  owner_state,
+                "appr_data_yr":      int(yr) if yr else target_yr,
             }
 
 
@@ -265,21 +353,48 @@ def iter_property_rows(zf, fname, target_yr, impr_map):
 def upsert_batch(conn, batch):
     sql = """
         update public.parcels set
-          appr_market_val   = %(appr_market_val)s,
-          appr_land_val     = %(appr_land_val)s,
-          appr_impr_val     = %(appr_impr_val)s,
-          appr_assessed_val = %(appr_assessed_val)s,
-          appr_taxable_val  = %(appr_taxable_val)s,
-          appr_exemptions   = %(appr_exemptions)s,
-          appr_yr_built     = %(appr_yr_built)s,
-          appr_living_sqft  = %(appr_living_sqft)s,
-          appr_owner_name   = %(appr_owner_name)s,
-          appr_owner_state  = %(appr_owner_state)s,
-          appr_data_yr      = %(appr_data_yr)s
+          appr_market_val    = %(appr_market_val)s,
+          appr_land_val      = %(appr_land_val)s,
+          appr_impr_val      = %(appr_impr_val)s,
+          appr_appraised_val = %(appr_appraised_val)s,
+          appr_assessed_val  = %(appr_assessed_val)s,
+          appr_taxable_val   = %(appr_taxable_val)s,
+          appr_cap_loss      = %(appr_cap_loss)s,
+          appr_exemptions    = %(appr_exemptions)s,
+          appr_yr_built      = %(appr_yr_built)s,
+          appr_living_sqft   = %(appr_living_sqft)s,
+          appr_gross_sqft    = %(appr_gross_sqft)s,
+          appr_class         = %(appr_class)s,
+          appr_neighborhood  = %(appr_neighborhood)s,
+          appr_state_cd      = %(appr_state_cd)s,
+          appr_land_acres    = %(appr_land_acres)s,
+          appr_deed_date     = %(appr_deed_date)s,
+          appr_owner_name    = %(appr_owner_name)s,
+          appr_owner_state   = %(appr_owner_state)s,
+          appr_data_yr       = %(appr_data_yr)s
         where parcel_id = %(parcel_id)s
+    """
+    # Also snapshot this roll year into the value-history table (for trends).
+    hist = """
+        insert into public.parcel_appraisal_history
+          (parcel_id, yr, market_val, land_val, impr_val,
+           appraised_val, assessed_val, taxable_val, cap_loss)
+        select %(parcel_id)s, %(appr_data_yr)s, %(appr_market_val)s, %(appr_land_val)s,
+               %(appr_impr_val)s, %(appr_appraised_val)s, %(appr_assessed_val)s,
+               %(appr_taxable_val)s, %(appr_cap_loss)s
+        where exists (select 1 from public.parcels where parcel_id = %(parcel_id)s)
+        on conflict (parcel_id, yr) do update set
+          market_val    = excluded.market_val,
+          land_val      = excluded.land_val,
+          impr_val      = excluded.impr_val,
+          appraised_val = excluded.appraised_val,
+          assessed_val  = excluded.assessed_val,
+          taxable_val   = excluded.taxable_val,
+          cap_loss      = excluded.cap_loss
     """
     with conn.cursor() as cur:
         cur.executemany(sql, batch)
+        cur.executemany(hist, batch)
     conn.commit()
 
 
