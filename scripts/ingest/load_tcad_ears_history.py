@@ -59,10 +59,14 @@ HEADERS = {
     "Referer": "https://traviscad.org/publicinformation",
 }
 
-# AJR column indices (0-based)
+# AJR column indices (0-based). The early fields — parcel, category, and the
+# market-value components (land/impr/mineral/pp) — are stable across EARS
+# vintages; the trailing exemption block grew over the years (85 cols in 2021 →
+# 97 in 2024), which shifts cap loss, so we only trust C_CAP on the newer layout.
 C_TYPE, C_YEAR, C_PID, C_CAT = 0, 1, 7, 30
 C_LAND, C_IMPR, C_MIN, C_PP, C_CAP = 34, 35, 36, 37, 66
-MIN_COLS = C_CAP + 1
+MIN_COLS = C_PP + 1          # enough columns to read the market components
+NEW_LAYOUT_COLS = 97         # the layout where C_CAP (cap loss) is valid
 BATCH = 1000
 
 
@@ -79,28 +83,36 @@ def download(url, dest):
 
 
 def open_ears_csv(zip_path):
-    """Return a text stream over the AJR CSV nested inside the EARS package.
+    """Return a text stream over the AJR CSV inside an EARS package.
 
-    Outer ZIP holds PDFs + one inner ZIP; the inner ZIP holds one .csv.
+    The package layout varies by year:
+      - recent (2024/2025): outer ZIP → a nested ZIP → one combined CSV (AJR/AUD/
+        TU2 records mixed; filtered by record type downstream).
+      - older  (2021):      outer ZIP → CSVs directly, AJR in *_AJR_RECORDS.csv.
     """
     outer = zipfile.ZipFile(zip_path)
-    # The package holds small PTD-report zips plus the big AJR-roll zip; pick the
-    # LARGEST .zip entry (the appraisal roll is by far the biggest).
+
+    # Structure A: a nested .zip holding the combined CSV (pick the largest of each).
     zips = sorted((i for i in outer.infolist() if i.filename.lower().endswith(".zip")),
                   key=lambda i: i.file_size, reverse=True)
-    if not zips:
-        sys.exit("No inner .zip found in the EARS package. Contents: "
-                 + ", ".join(outer.namelist()))
-    inner_name = zips[0].filename
-    inner = zipfile.ZipFile(io.BytesIO(outer.read(inner_name)))
-    csvs = sorted((i for i in inner.infolist() if i.filename.lower().endswith(".csv")),
-                  key=lambda i: i.file_size, reverse=True)
-    if not csvs:
-        sys.exit("No .csv found inside " + inner_name + ". Contents: "
-                 + ", ".join(inner.namelist()))
-    csv_name = csvs[0].filename
-    print(f"  EARS data file: {inner_name} -> {csv_name}", flush=True)
-    return io.TextIOWrapper(inner.open(csv_name), encoding="latin-1", errors="replace")
+    if zips:
+        inner = zipfile.ZipFile(io.BytesIO(outer.read(zips[0].filename)))
+        csvs = sorted((i for i in inner.infolist() if i.filename.lower().endswith(".csv")),
+                      key=lambda i: i.file_size, reverse=True)
+        if csvs:
+            print(f"  EARS data file: {zips[0].filename} -> {csvs[0].filename}", flush=True)
+            return io.TextIOWrapper(inner.open(csvs[0].filename), encoding="latin-1", errors="replace")
+
+    # Structure B: CSVs directly in the outer zip; prefer the AJR-records file.
+    csvs = [i for i in outer.infolist() if i.filename.lower().endswith(".csv")]
+    ajr = sorted((i for i in csvs if "AJR" in i.filename.upper()),
+                 key=lambda i: i.file_size, reverse=True)
+    pick = (ajr or sorted(csvs, key=lambda i: i.file_size, reverse=True))
+    if pick:
+        print(f"  EARS data file: {pick[0].filename}", flush=True)
+        return io.TextIOWrapper(outer.open(pick[0].filename), encoding="latin-1", errors="replace")
+
+    sys.exit("No CSV/zip found in the EARS package. Contents: " + ", ".join(outer.namelist()))
 
 
 def aggregate(stream, target_yr):
@@ -139,7 +151,9 @@ def aggregate(stream, target_yr):
 
         land = num(C_LAND); impr = num(C_IMPR)
         market = land + impr + num(C_MIN) + num(C_PP)
-        cap = num(C_CAP)
+        # Cap loss only sits at C_CAP on the newer (97-col) layout; older vintages
+        # shifted it, so don't trust it there (market/land/impr stay reliable).
+        cap = num(C_CAP) if len(rec) >= NEW_LAYOUT_COLS else 0
         a = agg.get(pid)
         if a is None:
             agg[pid] = {"market": market, "land": land, "impr": impr, "cap": cap}

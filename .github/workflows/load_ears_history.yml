@@ -24,10 +24,6 @@ on:
         default: "load"
         options: ["load", "dry-run"]
 
-concurrency:
-  group: load-ears-history
-  cancel-in-progress: false
-
 jobs:
   load:
     runs-on: ubuntu-latest
