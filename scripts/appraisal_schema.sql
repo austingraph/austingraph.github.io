@@ -69,6 +69,16 @@ alter table public.parcel_appraisal_history
   add column if not exists impr_val      bigint,
   add column if not exists appraised_val bigint,
   add column if not exists cap_loss      bigint;
+-- Force every value column to bigint — an older history table may have created
+-- these as int, which overflows on large parcels (the load failed here otherwise).
+alter table public.parcel_appraisal_history
+  alter column market_val    type bigint,
+  alter column land_val      type bigint,
+  alter column impr_val      type bigint,
+  alter column appraised_val type bigint,
+  alter column assessed_val  type bigint,
+  alter column taxable_val   type bigint,
+  alter column cap_loss      type bigint;
 alter table public.parcel_appraisal_history enable row level security;
 -- CREATE POLICY has no IF NOT EXISTS in Postgres, so guard it (idempotent re-runs).
 do $$ begin
