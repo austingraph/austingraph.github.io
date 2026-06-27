@@ -16,11 +16,11 @@ alter table public.parcels
   add column if not exists appr_cap_loss     bigint,       -- homestead 10% cap loss (market − appraised); equity/tenure signal
   add column if not exists appr_exemptions   text[],       -- e.g. '{HS,OV65}'
   add column if not exists appr_yr_built     smallint,     -- year improvements built
-  add column if not exists appr_living_sqft  int,          -- finished floor area (sq ft); excludes garage/porch/etc.
+  add column if not exists appr_living_sqft  bigint,       -- finished floor area (sq ft); excludes garage/porch/etc.
   add column if not exists appr_class        text,         -- construction class/quality of the main improvement
   add column if not exists appr_neighborhood text,         -- TCAD mass-appraisal neighborhood code (hood_cd)
   add column if not exists appr_state_cd     text,         -- PTAD state category (A1 single-fam, B multifam, C vacant, F commercial, …)
-  add column if not exists appr_land_sqft    int,          -- land-segment size in SQUARE FEET (authoritative lot size)
+  add column if not exists appr_land_sqft    bigint,       -- land-segment size in SQUARE FEET (authoritative lot size; bigint for large tracts)
   add column if not exists appr_deed_date    date,         -- last recorded deed date (transfer signal; NOT a sale price)
   add column if not exists appr_owner_name   text,         -- owner name as of Jan 1
   add column if not exists appr_owner_state  text,         -- owner mailing state ('TX' vs other)
@@ -33,7 +33,9 @@ alter table public.parcels
   alter column appr_land_val     type bigint,
   alter column appr_impr_val     type bigint,
   alter column appr_assessed_val type bigint,
-  alter column appr_taxable_val  type bigint;
+  alter column appr_taxable_val  type bigint,
+  alter column appr_living_sqft  type bigint,
+  alter column appr_land_sqft    type bigint;
 
 comment on column public.parcels.appr_market_val   is 'TCAD market value (land + improvements)';
 comment on column public.parcels.appr_appraised_val is 'Appraised value: market value after caps (10% homestead, ag productivity), before exemptions';
