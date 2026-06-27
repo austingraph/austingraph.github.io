@@ -581,7 +581,10 @@
     }
 
     const tcadAcres = parseFloat(row.metadata?.tcad_acres) || 0;
-    const lotSqft   = tcadAcres > 0 ? tcadAcres * 43560 : (data.stats?.areaM2 || 0) * 10.7639104;
+    // Prefer the authoritative TCAD land-segment size; fall back to acreage, then geometry.
+    const lotSqft   = (row.appr_land_sqft > 0) ? row.appr_land_sqft
+                    : tcadAcres > 0 ? tcadAcres * 43560
+                    : (data.stats?.areaM2 || 0) * 10.7639104;
     const taxBase   = assessed || market;
     const estTax    = Math.round(taxBase * taxRate);
     const thisYear  = new Date().getFullYear();
@@ -594,9 +597,18 @@
       "TCAD's value of the land alone."]);
     rows.push(['Improvement value', usd(impr),
       "TCAD's value of the building(s) on the land."]);
+    const landUse = (window.AG.stateCdLabel ? window.AG.stateCdLabel(row.appr_state_cd) : null);
+    if (landUse) rows.push(['Land use', `${landUse}${row.appr_state_cd ? ` (${row.appr_state_cd})` : ''}`,
+      'TCAD/PTAD state category — how the property is classified for appraisal.']);
+    if (row.appr_appraised_val != null && row.appr_appraised_val < market) {
+      rows.push(['Appraised value', usd(row.appr_appraised_val),
+        'Market value after caps (e.g. the homestead 10% cap) — the basis before exemptions.']);
+    }
     rows.push(['Assessed value',
       (assessed != null && assessed < market * 0.95) ? `${usd(assessed)} (homestead cap)` : usd(assessed),
       'Value used for taxes. May sit below market when a homestead 10% cap applies.']);
+    if (row.appr_cap_loss) rows.push(['Homestead cap savings', usd(row.appr_cap_loss),
+      'How far the 10% homestead cap holds the taxable value below market — a long-tenure / equity signal.']);
     if (row.appr_taxable_val != null) rows.push(['Taxable value', usd(row.appr_taxable_val),
       'The value the tax bill is actually computed on, after exemptions.']);
     rows.push(['Exemptions', codes.length ? codes.map((c) => labels[c] || c).join(', ') : 'None',
@@ -610,11 +622,17 @@
     if (land && lotSqft > 0)   rows.push(['Land $/sqft', `$${(land / lotSqft).toFixed(2)}`,
       'Land value divided by lot size — a land-price benchmark.']);
     if (impr && row.appr_living_sqft) rows.push(['Building $/sqft', `$${Math.round(impr / row.appr_living_sqft).toLocaleString()}`,
-      'Improvement value divided by living area.']);
+      'Improvement value ÷ finished floor area.']);
+    if (lotSqft > 0) rows.push(['Lot size', `${Math.round(lotSqft).toLocaleString()} sq ft (${(lotSqft / 43560).toFixed(3)} ac)`,
+      'Land area (TCAD land segments where available, else parcel geometry).']);
     if (row.appr_yr_built)     rows.push(['Year built', `${row.appr_yr_built} (${thisYear - row.appr_yr_built} yrs old)`,
       'Year the main improvement was built, with its age.']);
     if (row.appr_living_sqft)  rows.push(['Living area', `${row.appr_living_sqft.toLocaleString()} sq ft`,
-      'Finished building area from TCAD.']);
+      'Finished floor area from TCAD (excludes garage, porch, etc.).']);
+    if (row.appr_class)        rows.push(['Construction class', row.appr_class,
+      'TCAD construction-class / quality grade of the main improvement.']);
+    if (row.appr_neighborhood) rows.push(['TCAD neighborhood', row.appr_neighborhood,
+      "TCAD's mass-appraisal neighborhood — the comparison group used for the $/sqft percentiles above."]);
     // Owner name intentionally withheld; available from the TCAD appraisal roll.
     rows.push(['Owner', 'Available from TCAD appraisal roll',
       'Owner names are not shown on the site; look the parcel up at TCAD if you need ownership.']);

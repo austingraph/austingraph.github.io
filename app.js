@@ -140,9 +140,32 @@ const EXEMPTION_LABELS = {
   VET: 'Veteran', AG: 'Ag use', AB: 'Abatement', EX: 'Total exemption',
 };
 
+// PTAD state category codes (TCAD appr_state_cd) → plain-language land use.
+// Match the full code first (e.g. A1), then fall back to the letter class.
+const STATE_CD_LABELS = {
+  A: 'Residential — single-family', A1: 'Residential — single-family',
+  A2: 'Residential — mobile home', A3: 'Residential — condo',
+  B: 'Residential — multifamily', B1: 'Multifamily (apartments)', B2: 'Duplex/triplex/quadplex',
+  C: 'Vacant land', C1: 'Vacant lot', C2: 'Vacant commercial lot', C3: 'Vacant rural land',
+  D: 'Rural / ag land', D1: 'Qualified ag land', D2: 'Farm/ranch improvements',
+  E: 'Rural land + non-ag improvements', E1: 'Rural homesite',
+  F: 'Commercial / industrial', F1: 'Commercial real property', F2: 'Industrial real property',
+  G: 'Oil, gas & minerals', J: 'Utility', L: 'Personal property',
+  L1: 'Commercial personal property', L2: 'Industrial personal property',
+  M: 'Mobile home / tangible', O: 'Residential inventory (developer)',
+  S: 'Special inventory', X: 'Exempt',
+};
+
+function stateCdLabel(code) {
+  if (!code) return null;
+  const c = String(code).trim().toUpperCase();
+  return STATE_CD_LABELS[c] || STATE_CD_LABELS[c[0]] || c;
+}
+
 // Shared with report.js (full appraisal block reuses the tax rate + labels).
 window.AG.APPROX_TAX_RATE = APPROX_TAX_RATE;
 window.AG.EXEMPTION_LABELS = EXEMPTION_LABELS;
+window.AG.stateCdLabel = stateCdLabel;
 
 function fmtUSD(n) {
   if (n == null || n === 0) return null;
@@ -274,9 +297,9 @@ function openPanel(parcelId, geometry) {
   // appr_owner_name is intentionally NOT requested — the owner name stays in the
   // database (for case-by-case lookup in Supabase) and never reaches the browser.
   // appr_owner_state is kept: it's a derived signal (state code), not a name.
-  const apprCols = 'appr_market_val,appr_land_val,appr_impr_val,appr_assessed_val,'
-    + 'appr_taxable_val,appr_exemptions,appr_yr_built,appr_living_sqft,'
-    + 'appr_owner_state,appr_data_yr';
+  const apprCols = 'appr_market_val,appr_land_val,appr_impr_val,appr_appraised_val,appr_assessed_val,'
+    + 'appr_taxable_val,appr_cap_loss,appr_exemptions,appr_yr_built,appr_living_sqft,appr_class,'
+    + 'appr_neighborhood,appr_state_cd,appr_land_sqft,appr_owner_state,appr_data_yr';
   const cols = `metadata,flum_label,flum_code,zoning_ztype,zoning_base,upzoning_gap,upzoning_flag,${apprCols}`;
   fetch(`${SUPABASE_URL}/rest/v1/parcels?parcel_id=eq.${encodeURIComponent(parcelId)}&select=${cols}`, {
     headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
