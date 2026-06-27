@@ -6,7 +6,7 @@
   <title>austingraph</title>
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
   <link rel="stylesheet" href="https://unpkg.com/mapillary-js@4.1.2/dist/mapillary.css" />
-  <link rel="stylesheet" href="style.css?v=20260626b" />
+  <link rel="stylesheet" href="style.css?v=20260627a" />
 </head>
 <body>
   <div id="map"></div>
@@ -25,6 +25,7 @@
       <span id="sv-date" class="sv-date" style="display:none"></span>
       <p id="sv-status" class="panel-note">Select a parcel to see a street-level view.</p>
     </section>
+    <button id="sv-expand" type="button" style="display:none">&#10530; Full screen</button>
 
     <section>
       <h2>Dimensions</h2>
@@ -107,6 +108,17 @@
     </footer>
   </aside>
 
+  <!-- Enlarged street-level view (opened by #sv-expand) -->
+  <div id="sv-modal" aria-hidden="true">
+    <div id="sv-modal-inner">
+      <div id="sv-modal-bar">
+        <button id="sv-modal-fs" type="button" title="Toggle browser full screen">&#10530; Full screen</button>
+        <button id="sv-modal-close" type="button" aria-label="Close">&times;</button>
+      </div>
+      <div id="sv-modal-frame"></div>
+    </div>
+  </div>
+
   <div id="report-modal" aria-hidden="true">
     <div id="report-modal-inner">
       <button id="report-close" aria-label="Close report">&times;</button>
@@ -138,7 +150,7 @@
   <script src="connections.js?v=20260613"></script>
   <script src="neighborhood.js?v=20260623a"></script>
   <script src="https://unpkg.com/mapillary-js@4.1.2/dist/mapillary.js"></script>
-  <script src="streetview.js?v=20260625c"></script>
+  <script src="streetview.js?v=20260627a"></script>
   <script src="feasibility.js?v=20260623f"></script>
   <script src="report.js?v=20260626b"></script>
   <script defer src="https://unpkg.com/maplibre-contour@0.0.5/dist/index.min.js"></script>

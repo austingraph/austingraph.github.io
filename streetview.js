@@ -23,6 +23,14 @@
   const elStatus = document.getElementById('sv-status');
   if (!elWrap || !elFrame) return;
 
+  // Enlarged-popup elements (optional; guarded throughout).
+  const elExpand   = document.getElementById('sv-expand');
+  const elModal    = document.getElementById('sv-modal');
+  const elModalIn  = document.getElementById('sv-modal-inner');
+  const elModalFrm = document.getElementById('sv-modal-frame');
+  const elModalCls = document.getElementById('sv-modal-close');
+  const elModalFs  = document.getElementById('sv-modal-fs');
+
   const tokenMissing = !MAPILLARY_TOKEN || MAPILLARY_TOKEN.indexOf('REPLACE_WITH') === 0;
 
   // Average-of-coordinates centroid (same approach as centroid() in report.js).
@@ -53,13 +61,77 @@
     }
   }
 
+  function showExpand(on) {
+    if (elExpand) elExpand.style.display = on ? 'block' : 'none';
+  }
+
   function hideViewer() {
     elFrame.style.display = 'none';
     setDate(null);
+    currentImageId = null;
+    showExpand(false);
+    closeModal();
   }
 
-  let viewer = null;   // mapillary.Viewer, created lazily and reused
-  let token  = 0;      // stale-selection guard
+  let viewer = null;          // panel mapillary.Viewer, created lazily and reused
+  let modalViewer = null;     // enlarged-popup viewer, created on open, disposed on close
+  let currentImageId = null;  // the image currently shown (drives the popup)
+  let token  = 0;             // stale-selection guard
+
+  // ── Enlarged popup ────────────────────────────────────────────────────────────
+  function openModal() {
+    if (!elModal || !elModalFrm || !currentImageId) return;
+    if (!window.mapillary || !window.mapillary.Viewer) return;
+    elModal.classList.add('open');
+    elModal.setAttribute('aria-hidden', 'false');
+    // Create the larger viewer once the container is laid out (sized). Double rAF:
+    // first frame commits the flex layout, second reads correct dimensions.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (!elModal.classList.contains('open')) return;   // closed again already
+      if (modalViewer) {
+        modalViewer.moveTo(currentImageId).catch(() => {});
+        if (modalViewer.resize) modalViewer.resize();
+        return;
+      }
+      modalViewer = new window.mapillary.Viewer({
+        accessToken: MAPILLARY_TOKEN,
+        container: elModalFrm,
+        imageId: currentImageId,
+        component: { cover: false },
+      });
+    }));
+  }
+
+  function closeModal() {
+    if (!elModal) return;
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    elModal.classList.remove('open');
+    elModal.setAttribute('aria-hidden', 'true');
+    if (modalViewer) {
+      try { modalViewer.remove(); } catch (e) { /* ignore */ }
+      modalViewer = null;
+    }
+  }
+
+  function toggleFullscreen() {
+    if (!elModalIn) return;
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    } else if (elModalIn.requestFullscreen) {
+      elModalIn.requestFullscreen().catch(() => {});
+    }
+  }
+
+  if (elExpand)   elExpand.addEventListener('click', openModal);
+  if (elModalCls) elModalCls.addEventListener('click', closeModal);
+  if (elModalFs)  elModalFs.addEventListener('click', toggleFullscreen);
+  if (elModal)    elModal.addEventListener('click', (e) => { if (e.target === elModal) closeModal(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && elModal && elModal.classList.contains('open')) closeModal();
+  });
+  document.addEventListener('fullscreenchange', () => {
+    if (modalViewer && modalViewer.resize) modalViewer.resize();
+  });
 
   // Create the viewer once (container must be visible + sized first), or move an
   // existing one to the new image.
@@ -102,6 +174,8 @@
     }
     const lon = c[0], lat = c[1];
     status('Loading street view…');
+    currentImageId = null;
+    showExpand(false);
 
     // Nearest Mapillary image to the parcel centroid (radius max 50m).
     fetch('https://graph.mapillary.com/images?fields=id,captured_at' +
@@ -119,6 +193,10 @@
         if (showImage(img.id)) {
           status('');
           setDate(img.captured_at);
+          currentImageId = img.id;
+          showExpand(true);
+          // If the popup is already open (e.g. user switched parcels), move it.
+          if (modalViewer) modalViewer.moveTo(img.id).catch(() => {});
         }
       })
       .catch(() => {

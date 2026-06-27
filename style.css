@@ -217,6 +217,62 @@ body {
 }
 .pctl-cap { font-size: 11px; color: #777; margin-top: 5px; }
 
+/* ── Street-view "Full screen" button + enlarged popup ─────────────────────── */
+#sv-expand {
+  width: 100%;
+  margin-top: 6px;
+  padding: 5px 8px;
+  font-size: 12px;
+  color: #ddd;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 5px;
+  cursor: pointer;
+}
+#sv-expand:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
+
+#sv-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.8);
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+#sv-modal.open { display: flex; }
+#sv-modal-inner {
+  position: relative;
+  width: 85vw;
+  height: 85vh;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+/* When the popup itself is sent to true browser full screen, fill the screen. */
+#sv-modal-inner:fullscreen { width: 100vw; height: 100vh; border-radius: 0; }
+#sv-modal-frame { position: absolute; inset: 0; }
+#sv-modal-bar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+}
+#sv-modal-bar button {
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 5px;
+  cursor: pointer;
+}
+#sv-modal-bar button:hover { background: rgba(0, 0, 0, 0.85); }
+#sv-modal-fs { font-size: 12px; padding: 4px 10px; }
+#sv-modal-close { font-size: 20px; line-height: 1; padding: 1px 9px; }
+
 /* ── Connections (knowledge graph) ────────────────────────────────────────── */
 .conn-group { display: flex; flex-direction: column; gap: 10px; }
 .conn-group:not(:empty) { margin-top: 10px; }
