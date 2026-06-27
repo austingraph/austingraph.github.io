@@ -68,6 +68,16 @@ alter table public.parcel_appraisal_history
   add column if not exists appraised_val bigint,
   add column if not exists cap_loss      bigint;
 alter table public.parcel_appraisal_history enable row level security;
-create policy if not exists "anon read" on public.parcel_appraisal_history
-  for select using (true);
+-- CREATE POLICY has no IF NOT EXISTS in Postgres, so guard it (idempotent re-runs).
+do $$ begin
+  if not exists (
+    select 1 from pg_policies
+     where schemaname = 'public'
+       and tablename = 'parcel_appraisal_history'
+       and policyname = 'anon read'
+  ) then
+    create policy "anon read" on public.parcel_appraisal_history
+      for select using (true);
+  end if;
+end $$;
 grant select on public.parcel_appraisal_history to anon, authenticated;

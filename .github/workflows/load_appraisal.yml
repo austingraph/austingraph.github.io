@@ -53,6 +53,18 @@ jobs:
       - name: Install dependencies
         run: pip install -r scripts/ingest/requirements.txt
 
+      # Deploy the appraisal columns/history table + the value-context RPC before a
+      # real load, so the loader's new columns exist and the percentile RPC is current.
+      # Skipped for inspect/dry-run (no DB writes there). psql handles multi-statement
+      # files (DO blocks, function bodies) that psycopg can't run in one call.
+      - name: Apply schema + RPC (load mode only)
+        if: ${{ inputs.mode == 'load' }}
+        run: |
+          command -v psql >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client; }
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+            -f scripts/appraisal_schema.sql \
+            -f scripts/parcel_value_context.sql
+
       - name: Run loader
         run: |
           case "${{ inputs.mode }}" in
