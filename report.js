@@ -35,6 +35,7 @@
   let measurePts = [];
   let demoCtr    = 0;        // stale-fetch guard for demographics
   let valCtr     = 0;        // stale-fetch guard for value-context ($/sqft percentiles)
+  let histCtr    = 0;        // stale-fetch guard for value history (trend sparkline)
 
   // ── Basemap style ─────────────────────────────────────────────────────────────
   const REPORT_STYLE = {
@@ -661,6 +662,13 @@
     vctx.className = 'value-context';
     vctx.id = 'report-value-ctx';
     sec.insertBefore(vctx, sec.children[splitHtml ? 2 : 1]); // after the split bar (or title)
+
+    // Placeholder for the value-over-time sparkline, filled async by
+    // fetchValueHistory(). Stays empty until ≥2 years of history are present.
+    const vhist = document.createElement('div');
+    vhist.className = 'value-history';
+    vhist.id = 'report-value-history';
+    sec.insertBefore(vhist, vctx.nextSibling);
     return sec;
   }
 
@@ -740,6 +748,61 @@
         if (token !== valCtr) return;                  // a newer parcel was opened
         if (!modal.classList.contains('open')) return;
         if (d && d.status === 'ok') renderValueContext(d);
+      })
+      .catch(() => {});                                // RPC absent / offline: stay hidden
+  }
+
+  // ── Value-over-time sparkline (parcel_value_history RPC) ─────────────────────
+  // Builds a small inline SVG line of market value by year, with endpoint labels
+  // and total change. Returns null with < 2 years (no trend to show).
+  function makeSparkline(series) {
+    const pts = (series || [])
+      .filter((d) => d && d.yr && d.market != null && d.market > 0)
+      .sort((a, b) => a.yr - b.yr);
+    if (pts.length < 2) return null;
+
+    const W = 280, H = 54, pad = 4;
+    const ys = pts.map((p) => p.market);
+    const min = Math.min(...ys), max = Math.max(...ys), span = (max - min) || 1;
+    const x = (i) => pad + (i * (W - 2 * pad)) / (pts.length - 1);
+    const y = (v) => H - pad - ((v - min) / span) * (H - 2 * pad);
+    const line = pts.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.market).toFixed(1)}`).join(' ');
+    const dots = pts.map((p, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(p.market).toFixed(1)}" r="2" />`).join('');
+
+    const first = pts[0], last = pts[pts.length - 1];
+    const usd = (n) => '$' + Math.round(n).toLocaleString();
+    const pctChange = ((last.market - first.market) / first.market) * 100;
+    const sign = pctChange >= 0 ? '+' : '';
+    const cls = pctChange >= 0 ? 'up' : 'down';
+
+    const wrap = document.createElement('div');
+    wrap.className = 'spark';
+    wrap.innerHTML =
+      `<div class="value-context-title">Market value trend</div>` +
+      `<svg class="spark-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">` +
+        `<path d="${line}" fill="none" />${dots}</svg>` +
+      `<div class="spark-cap">${first.yr} ${usd(first.market)} → ${last.yr} ${usd(last.market)} ` +
+        `<span class="spark-chg ${cls}">${sign}${pctChange.toFixed(0)}%</span></div>`;
+    return wrap;
+  }
+
+  function fetchValueHistory(parcelId, token) {
+    fetch(`${window.AG.SUPABASE_URL}/rest/v1/rpc/parcel_value_history`, {
+      method: 'POST',
+      headers: {
+        apikey: window.AG.SUPABASE_KEY,
+        Authorization: `Bearer ${window.AG.SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ p_parcel_id: parcelId }),
+    })
+      .then((r) => r.json())
+      .then((series) => {
+        if (token !== histCtr) return;
+        if (!modal.classList.contains('open')) return;
+        const box = document.getElementById('report-value-history');
+        const spark = makeSparkline(series);
+        if (box && spark) { box.innerHTML = ''; box.appendChild(spark); box.classList.add('has-data'); }
       })
       .catch(() => {});                                // RPC absent / offline: stay hidden
   }
@@ -874,6 +937,7 @@
     const demoToken = ++demoCtr;
     seedFeasibility(data.parcelId, demoToken);
     fetchValueContext(data.parcelId, ++valCtr);
+    fetchValueHistory(data.parcelId, ++histCtr);
 
     pendingGeom = data.geometry;
 

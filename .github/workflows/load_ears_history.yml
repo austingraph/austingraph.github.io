@@ -47,7 +47,9 @@ jobs:
         if: ${{ inputs.mode == 'load' }}
         run: |
           command -v psql >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client; }
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/appraisal_schema.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+            -f scripts/appraisal_schema.sql \
+            -f scripts/parcel_value_history.sql
 
       - name: Run EARS history loader
         run: |
