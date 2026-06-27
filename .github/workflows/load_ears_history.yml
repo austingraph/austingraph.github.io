@@ -1,0 +1,56 @@
+name: Load EARS value history
+
+# Loads prior-year appraisal values into public.parcel_appraisal_history from
+# TCAD's free EARS files, for the report's value-over-time trend (Phase C).
+# Current-year values come from the PACS roll (Load TCAD appraisal roll); this
+# workflow backfills 2021-2025. Run once per year from the Actions tab.
+#
+#   1. mode = dry-run  → parse + aggregate, print sample parcels, NO write
+#   2. mode = load     → upsert into parcel_appraisal_history
+#
+# Requires the DATABASE_URL repo secret (same as the appraisal-roll loader).
+
+on:
+  workflow_dispatch:
+    inputs:
+      year:
+        description: "EARS year to load"
+        type: choice
+        default: "2024"
+        options: ["2021", "2022", "2023", "2024", "2025"]
+      mode:
+        description: "dry-run = parse only · load = write to DB"
+        type: choice
+        default: "load"
+        options: ["load", "dry-run"]
+
+concurrency:
+  group: load-ears-history
+  cancel-in-progress: false
+
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r scripts/ingest/requirements.txt
+
+      # Ensure the history table + its bigint columns exist before a load.
+      - name: Apply schema (load mode only)
+        if: ${{ inputs.mode == 'load' }}
+        run: |
+          command -v psql >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client; }
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/appraisal_schema.sql
+
+      - name: Run EARS history loader
+        run: |
+          FLAG=""; [ "${{ inputs.mode }}" = "dry-run" ] && FLAG="--dry-run"
+          echo "Running: load_tcad_ears_history.py --year ${{ inputs.year }} $FLAG"
+          python scripts/ingest/load_tcad_ears_history.py --year "${{ inputs.year }}" $FLAG
