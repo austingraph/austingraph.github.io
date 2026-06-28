@@ -309,6 +309,36 @@ function renderLinks(parcelId, geometry) {
     .join('');
 }
 
+// Site Check — pre-development flags for the selected parcel (precomputed columns
+// + existing data). status: ok | warn | alert | info.
+function renderSiteCheck(row) {
+  const box = document.getElementById('sitecheck-list');
+  if (!box) return;
+  box.innerHTML = '';
+  const add = (status, label, detail) => {
+    const r = document.createElement('div');
+    r.className = `sc-row sc-${status}`;
+    const dot = document.createElement('span'); dot.className = 'sc-dot';
+    const txt = document.createElement('div');
+    const l = document.createElement('div'); l.className = 'sc-label'; l.textContent = label;
+    const d = document.createElement('div'); d.className = 'sc-detail'; d.textContent = detail;
+    txt.appendChild(l); txt.appendChild(d);
+    r.appendChild(dot); r.appendChild(txt);
+    box.appendChild(r);
+  };
+
+  // Floodplain (FEMA, precomputed by load_floodzones.py)
+  const fz = row && row.sitecheck_flood;
+  if (fz && /^\.2/.test(fz)) add('warn', 'Floodplain', `0.2% annual chance (moderate) — FEMA zone ${fz}`);
+  else if (fz)              add('alert', 'Floodplain', `In FEMA floodplain — 1% annual chance (SFHA), zone ${fz}`);
+  else                      add('ok', 'Floodplain', 'Not in a mapped FEMA flood hazard zone');
+
+  // City zoning vs ETJ/county — who permits the work
+  const zb = row && row.zoning_base;
+  if (zb) add('ok', 'Jurisdiction', `City of Austin zoning on file (${zb})`);
+  else    add('info', 'Jurisdiction', 'No city zoning on file — likely ETJ or county (different permitting)');
+}
+
 function openPanel(parcelId, geometry) {
   elId.textContent = parcelId;
   elTcad.href = `https://travis.prodigycad.com/property-detail/${parcelId}`;
@@ -334,6 +364,8 @@ function openPanel(parcelId, geometry) {
   [elApprMarket, elApprAssessed, elApprTax, elApprOwner]
     .forEach((el) => { el.textContent = '—'; });
   elApprStatus.textContent = '';
+  const scList = document.getElementById('sitecheck-list');
+  if (scList) scList.innerHTML = '';
 
   const token = ++metaFetchToken;
   // appr_owner_name is intentionally NOT requested — the owner name stays in the
@@ -342,7 +374,7 @@ function openPanel(parcelId, geometry) {
   const apprCols = 'appr_market_val,appr_land_val,appr_impr_val,appr_appraised_val,appr_assessed_val,'
     + 'appr_taxable_val,appr_cap_loss,appr_exemptions,appr_yr_built,appr_living_sqft,appr_class,'
     + 'appr_neighborhood,appr_state_cd,appr_land_sqft,appr_owner_state,appr_data_yr';
-  const cols = `metadata,flum_label,flum_code,zoning_ztype,zoning_base,upzoning_gap,upzoning_flag,${apprCols}`;
+  const cols = `metadata,flum_label,flum_code,zoning_ztype,zoning_base,upzoning_gap,upzoning_flag,sitecheck_flood,${apprCols}`;
   fetch(`${SUPABASE_URL}/rest/v1/parcels?parcel_id=eq.${encodeURIComponent(parcelId)}&select=${cols}`, {
     headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
   })
@@ -362,6 +394,7 @@ function openPanel(parcelId, geometry) {
       }
       renderPlanning(row);
       renderAppraisal(row);
+      renderSiteCheck(row);
     })
     .catch(() => {
       if (token !== metaFetchToken) return;

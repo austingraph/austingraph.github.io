@@ -248,6 +248,23 @@ body {
 }
 .panel-links a:hover { background: rgba(255, 255, 255, 0.14); color: #fff; }
 
+/* ── Site Check flags (panel) ──────────────────────────────────────────────── */
+.sitecheck-list { display: flex; flex-direction: column; gap: 9px; }
+.sc-row { display: flex; gap: 9px; align-items: flex-start; }
+.sc-dot {
+  flex: none;
+  width: 9px; height: 9px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: #888;
+}
+.sc-ok    .sc-dot { background: #2e8b57; }   /* green  */
+.sc-warn  .sc-dot { background: #e8a838; }   /* amber  */
+.sc-alert .sc-dot { background: #d9534f; }   /* red    */
+.sc-info  .sc-dot { background: #6c8ebf; }   /* blue   */
+.sc-label { font-size: 12.5px; font-weight: 600; color: #ddd; }
+.sc-detail { font-size: 11.5px; color: #9a9a9a; }
+
 /* ── Street-view "Full screen" button + enlarged popup ─────────────────────── */
 #sv-expand {
   width: 100%;
