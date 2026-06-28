@@ -17,7 +17,7 @@ on:
         description: "Which Site Check layer to (re)load"
         type: choice
         default: "floodplain"
-        options: ["floodplain", "watershed", "jurisdiction", "historic"]
+        options: ["floodplain", "watershed", "jurisdiction"]
       mode:
         description: "load = write to DB · inspect = report source fields only"
         type: choice
