@@ -34,9 +34,8 @@ jobs:
         working-directory: scripts/ingest
         run: python ingest_zoning_cases.py
 
-      - name: Ingest permits
-        working-directory: scripts/ingest
-        run: python ingest_permits.py
+      # Permits are now fetched LIVE per parcel from Austin open data (connections.js),
+      # so the knowledge-graph permit ingest is intentionally not run here.
 
       - name: Ingest council votes
         working-directory: scripts/ingest
