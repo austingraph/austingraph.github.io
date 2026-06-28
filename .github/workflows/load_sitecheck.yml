@@ -1,0 +1,38 @@
+name: Load Site Check data
+
+# Precomputes the parcel "Site Check" flags by loading Austin/FEMA regulatory
+# layers into PostGIS and spatial-joining them onto public.parcels. Run on demand
+# from the Actions tab. Austin's ArcGIS is not CORS-enabled, so these are
+# precomputed server-side (like the FLUM/zoning joins) rather than queried live.
+#
+# Phase 3a: floodplain (from shared/floodzone.geojson, already in the repo).
+
+on:
+  workflow_dispatch:
+    inputs:
+      layer:
+        description: "Which Site Check layer to (re)load"
+        type: choice
+        default: "floodplain"
+        options: ["floodplain"]
+
+concurrency:
+  group: load-sitecheck
+  cancel-in-progress: false
+
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r scripts/ingest/requirements.txt
+      - name: Load floodplain
+        if: ${{ inputs.layer == 'floodplain' }}
+        run: python scripts/ingest/load_floodzones.py
