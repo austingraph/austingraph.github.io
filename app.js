@@ -22,6 +22,15 @@ const map = new maplibregl.Map({
 
 map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
 
+// GPS / "find me" button (top-left). Geolocation is requested ONLY when the user
+// clicks this button — never on page load — then the device location is shown
+// and tracked on the map.
+map.addControl(new maplibregl.GeolocateControl({
+  positionOptions: { enableHighAccuracy: true },
+  trackUserLocation: true,
+  showUserHeading: true,
+}), 'top-left');
+
 // Shared handles for sibling modules (envelope.js)
 window.AG = { map, SUPABASE_URL, SUPABASE_KEY };
 
