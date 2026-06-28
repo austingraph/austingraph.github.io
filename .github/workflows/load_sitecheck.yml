@@ -2,10 +2,13 @@ name: Load Site Check data
 
 # Precomputes the parcel "Site Check" flags by loading Austin/FEMA regulatory
 # layers into PostGIS and spatial-joining them onto public.parcels. Run on demand
-# from the Actions tab. Austin's ArcGIS is not CORS-enabled, so these are
-# precomputed server-side (like the FLUM/zoning joins) rather than queried live.
+# from the Actions tab. Austin's ArcGIS/Socrata-map layers are not browser-CORS
+# friendly, so these are precomputed server-side (like the FLUM/zoning joins).
 #
-# Phase 3a: floodplain (from shared/floodzone.geojson, already in the repo).
+#   floodplain                       → parcels.sitecheck_flood (FEMA, repo geojson)
+#   watershed / jurisdiction / historic → parcels.sitecheck_* (Austin open data)
+#
+# mode = inspect lists the source fields without writing (use it to verify data).
 
 on:
   workflow_dispatch:
@@ -14,7 +17,12 @@ on:
         description: "Which Site Check layer to (re)load"
         type: choice
         default: "floodplain"
-        options: ["floodplain"]
+        options: ["floodplain", "watershed", "jurisdiction", "historic"]
+      mode:
+        description: "load = write to DB · inspect = report source fields only"
+        type: choice
+        default: "load"
+        options: ["load", "inspect"]
 
 concurrency:
   group: load-sitecheck
@@ -33,6 +41,13 @@ jobs:
           python-version: "3.12"
       - name: Install dependencies
         run: pip install -r scripts/ingest/requirements.txt
+
       - name: Load floodplain
         if: ${{ inputs.layer == 'floodplain' }}
         run: python scripts/ingest/load_floodzones.py
+
+      - name: Load overlay (watershed / jurisdiction / historic)
+        if: ${{ inputs.layer != 'floodplain' }}
+        run: |
+          FLAG=""; [ "${{ inputs.mode }}" = "inspect" ] && FLAG="--inspect"
+          python scripts/ingest/load_overlay.py --layer "${{ inputs.layer }}" $FLAG
