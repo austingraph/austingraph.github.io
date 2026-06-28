@@ -277,12 +277,45 @@ function renderPlanning(row) {
   }
 }
 
+// Centroid [lon,lat] from a GeoJSON geometry (vertex average) — for deep links.
+function panelCentroid(geometry) {
+  if (!geometry || !geometry.coordinates) return null;
+  let sx = 0, sy = 0, n = 0;
+  const walk = (c) => {
+    if (typeof c[0] === 'number') { sx += c[0]; sy += c[1]; n++; return; }
+    c.forEach(walk);
+  };
+  walk(geometry.coordinates);
+  return n ? [sx / n, sy / n] : null;
+}
+
+// "Look it up" launcher — one-click jumps to authoritative external systems for
+// the selected parcel (TCAD, Austin permits/zoning/flood, maps, deed records).
+function renderLinks(parcelId, geometry) {
+  const box = document.getElementById('panel-links');
+  if (!box) return;
+  const c = panelCentroid(geometry);
+  const ll = c ? `${c[1].toFixed(6)},${c[0].toFixed(6)}` : null;
+  const links = [
+    ['TCAD record', `https://travis.prodigycad.com/property-detail/${encodeURIComponent(parcelId)}`],
+    ['City permits (AB+C)', 'https://abc.austintexas.gov/web/permit/public-search-other'],
+    ['Zoning · flood · historic (Property Profile)', 'https://maps.austintexas.gov/GIS/PropertyProfile/'],
+    ll && ['Street View', `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${ll}`],
+    ll && ['Aerial', `https://www.google.com/maps/search/?api=1&query=${ll}`],
+    ['Deed records', 'https://www.traviscountytx.gov/county-clerk/recording'],
+  ].filter(Boolean);
+  box.innerHTML = links
+    .map(([t, h]) => `<a href="${h}" target="_blank" rel="noopener">${t} ↗</a>`)
+    .join('');
+}
+
 function openPanel(parcelId, geometry) {
   elId.textContent = parcelId;
   elTcad.href = `https://travis.prodigycad.com/property-detail/${parcelId}`;
 
   const s = geometryStats(geometry);
   window.AG.lastPanelData = { parcelId, geometry, stats: s };
+  renderLinks(parcelId, geometry);
   const reportBtn = document.getElementById('panel-report-btn');
   if (reportBtn) reportBtn.style.display = '';
   const centerBtn = document.getElementById('panel-center-btn');

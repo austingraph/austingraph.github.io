@@ -234,6 +234,20 @@ body {
 .spark-chg.up { color: #2e8b57; }
 .spark-chg.down { color: #c0532b; }
 
+/* ── "Look it up" deep-link launcher (panel) ───────────────────────────────── */
+.panel-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.panel-links a {
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #ddd;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.panel-links a:hover { background: rgba(255, 255, 255, 0.14); color: #fff; }
+
 /* ── Street-view "Full screen" button + enlarged popup ─────────────────────── */
 #sv-expand {
   width: 100%;
