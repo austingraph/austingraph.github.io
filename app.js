@@ -333,10 +333,29 @@ function renderSiteCheck(row) {
   else if (fz)              add('alert', 'Floodplain', `In FEMA floodplain — 1% annual chance (SFHA), zone ${fz}`);
   else                      add('ok', 'Floodplain', 'Not in a mapped FEMA flood hazard zone');
 
-  // City zoning vs ETJ/county — who permits the work
-  const zb = row && row.zoning_base;
-  if (zb) add('ok', 'Jurisdiction', `City of Austin zoning on file (${zb})`);
-  else    add('info', 'Jurisdiction', 'No city zoning on file — likely ETJ or county (different permitting)');
+  // Watershed regulation → approximate impervious-cover cap (Austin LDC 25-8)
+  const ws = row && row.sitecheck_watershed;
+  const WS = {
+    'URBAN':                 ['ok',    'Urban watershed — up to ~80% impervious cover'],
+    'SUBURBAN':              ['info',  'Suburban watershed — ~55% impervious cap'],
+    'WATER SUPPLY SUBURBAN': ['warn',  'Water Supply Suburban — ~30% impervious cap (water quality)'],
+    'WATER SUPPLY RURAL':    ['warn',  'Water Supply Rural — ~20% impervious cap (water quality)'],
+    'BSZ':                   ['alert', 'Barton Springs Zone — strict water-quality limits'],
+  };
+  if (ws && WS[ws]) add(WS[ws][0], 'Watershed', WS[ws][1]);
+  else if (ws)      add('info', 'Watershed', `${ws} watershed regulation area`);
+
+  // Jurisdiction — authoritative (sitecheck_jurisdiction), else fall back to zoning hint
+  const j = row && row.sitecheck_jurisdiction;
+  if (j && /FULL PURPOSE/i.test(j))   add('ok',   'Jurisdiction', 'City of Austin full-purpose — city permits & zoning');
+  else if (j && /LTD|LIMITED/i.test(j)) add('info', 'Jurisdiction', 'Limited-purpose annexation — city zoning, county building permits');
+  else if (j && /ETJ/i.test(j))        add('info', 'Jurisdiction', `Extraterritorial jurisdiction (${j}) — county permits, no city zoning`);
+  else if (j)                          add('info', 'Jurisdiction', j);
+  else {
+    const zb = row && row.zoning_base;
+    if (zb) add('ok', 'Jurisdiction', `City of Austin zoning on file (${zb})`);
+    else    add('info', 'Jurisdiction', 'No city zoning on file — likely ETJ or county (different permitting)');
+  }
 }
 
 function openPanel(parcelId, geometry) {
@@ -374,7 +393,8 @@ function openPanel(parcelId, geometry) {
   const apprCols = 'appr_market_val,appr_land_val,appr_impr_val,appr_appraised_val,appr_assessed_val,'
     + 'appr_taxable_val,appr_cap_loss,appr_exemptions,appr_yr_built,appr_living_sqft,appr_class,'
     + 'appr_neighborhood,appr_state_cd,appr_land_sqft,appr_owner_state,appr_data_yr';
-  const cols = `metadata,flum_label,flum_code,zoning_ztype,zoning_base,upzoning_gap,upzoning_flag,sitecheck_flood,${apprCols}`;
+  const cols = `metadata,flum_label,flum_code,zoning_ztype,zoning_base,upzoning_gap,upzoning_flag,`
+    + `sitecheck_flood,sitecheck_watershed,sitecheck_jurisdiction,${apprCols}`;
   fetch(`${SUPABASE_URL}/rest/v1/parcels?parcel_id=eq.${encodeURIComponent(parcelId)}&select=${cols}`, {
     headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
   })
