@@ -690,7 +690,54 @@
     vhist.className = 'value-history';
     vhist.id = 'report-value-history';
     sec.insertBefore(vhist, vctx.nextSibling);
+
+    // Comps & listings: deep links to live market data so the user can sanity-
+    // check the appraised values and the feasibility Sale-price / Rent inputs.
+    // Texas is a non-disclosure state, so these portals are the practical place
+    // to see real prices for the parcel's area.
+    const compsRow = buildCompsLinks(data, row);
+    if (compsRow) sec.appendChild(compsRow);
     return sec;
+  }
+
+  // External market-comp + listings links for the parcel: sale comps, rent comps,
+  // and the city permit/fee portal. Built from the situs address + zip + centroid.
+  function buildCompsLinks(data, row) {
+    const addr = (row.metadata?.situs_address || '').trim();
+    const zip  = (addr.match(/\b(\d{5})\b/) || [])[1] || '';
+    const comm = /^(CS|GR|CH|CBD|MU|MF|DMU|CR|W\/|L[IR])/i.test(row.zoning_base || '');
+
+    // Address slug for portals that geocode a free-form address (Zillow _rb).
+    let slug = addr;
+    if (slug && !/austin/i.test(slug)) slug += ' Austin';
+    if (slug && !/\bTX\b/i.test(slug)) slug += ' TX';
+    slug = slug.trim().replace(/\s+/g, '-');
+
+    const links = [];
+    if (slug) {
+      links.push(['Zillow (for sale)', `https://www.zillow.com/homes/${encodeURIComponent(slug)}_rb/`]);
+      links.push(['Zillow (rentals)',  `https://www.zillow.com/homes/for_rent/${encodeURIComponent(slug)}_rb/`]);
+    }
+    if (zip) {
+      links.push(['Redfin',      `https://www.redfin.com/zipcode/${zip}`]);
+      links.push(['Realtor.com', `https://www.realtor.com/realestateandhomes-search/${zip}`]);
+    }
+    if (comm) links.push(['LoopNet (commercial)', 'https://www.loopnet.com/search/commercial-real-estate/austin-tx/for-sale/']);
+    links.push(['Austin permits & fees', 'https://www.austintexas.gov/department/development-services']);
+
+    if (!links.length) return null;
+    const wrap = document.createElement('div');
+    wrap.className = 'report-links-wrap';
+    const lbl = document.createElement('div');
+    lbl.className = 'report-links-label';
+    lbl.textContent = 'Comps & listings';
+    const box = document.createElement('div');
+    box.className = 'report-links';
+    box.innerHTML = links
+      .map(([t, h]) => `<a href="${h}" target="_blank" rel="noopener">${t} ↗</a>`)
+      .join('');
+    wrap.appendChild(lbl); wrap.appendChild(box);
+    return wrap;
   }
 
   // ── $/sqft neighborhood percentile (parcel_value_context RPC) ────────────────

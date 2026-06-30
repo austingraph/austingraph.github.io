@@ -914,6 +914,22 @@ body {
 }
 .report-ovl-item input { accent-color: #b8860b; cursor: pointer; }
 
+/* Comps & listings deep-links row in the report (light-theme pill links) */
+.report-links-wrap { margin: 12px 0 2px; }
+.report-links-label { font-size: 12px; font-weight: 700; color: #555; margin-bottom: 6px; }
+.report-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.report-links a {
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: rgba(232, 168, 56, 0.12);
+  border: 1px solid rgba(232, 168, 56, 0.45);
+  color: #8a6116;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.report-links a:hover { background: rgba(232, 168, 56, 0.22); color: #6b4a10; }
+
 /* Print-only baked snapshots (hidden in browser, shown only at @media print) */
 #report-print-maps { display: none; }
 
@@ -1274,4 +1290,6 @@ body {
   }
   /* Keep individual sections from splitting awkwardly across page breaks */
   .report-section, .feasibility-subsection { break-inside: avoid; }
+  /* Interactive deep-links are useless on paper */
+  .report-links-wrap { display: none !important; }
 }
