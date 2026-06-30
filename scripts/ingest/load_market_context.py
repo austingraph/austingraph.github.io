@@ -106,28 +106,34 @@ def fetch_redfin(keep_zips, inspect=False):
         text = io.TextIOWrapper(gz, encoding="utf-8", errors="replace")
         reader = csv.reader(text, delimiter="\t")
         header = next(reader)
-        idx = {name: i for i, name in enumerate(header)}
+        # Redfin headers are UPPERCASE and fields are double-quoted in a way csv
+        # doesn't auto-strip — normalise names (and values) by stripping quotes.
+        norm = lambda s: s.strip().strip('"')
+        idx = {norm(name).lower(): i for i, name in enumerate(header)}
         need = ("period_begin", "region", "state_code", "property_type", "median_ppsf", "median_sale_price")
         missing = [c for c in need if c not in idx]
         if missing:
             print(f"  ! Redfin columns missing {missing}; header was: {header[:20]}", flush=True)
             return out
+        def cell(r, k):
+            i = idx[k]
+            return norm(r[i]) if i < len(r) else ""
         for r in reader:
             n += 1
             if n % 2_000_000 == 0:
                 print(f"    …scanned {n:,} rows, {len(out)} matching ZIPs", flush=True)
             try:
-                if r[idx["state_code"]] != "TX" or r[idx["property_type"]] != "All Residential":
+                if cell(r, "state_code") != "TX" or cell(r, "property_type") != "All Residential":
                     continue
-                m = ZIP_RE.search(r[idx["region"]] or "")
+                m = ZIP_RE.search(cell(r, "region"))
                 if not m:
                     continue
                 z = m.group(1)
                 if keep_zips and z not in keep_zips:
                     continue
-                period = r[idx["period_begin"]]
-                ppsf = r[idx["median_ppsf"]]
-                price = r[idx["median_sale_price"]]
+                period = cell(r, "period_begin")
+                ppsf = cell(r, "median_ppsf")
+                price = cell(r, "median_sale_price")
                 if not ppsf:
                     continue
                 prev = out.get(z)
