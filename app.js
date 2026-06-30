@@ -300,13 +300,24 @@ function renderLinks(parcelId, geometry) {
     ['TCAD record', `https://travis.prodigycad.com/property-detail/${encodeURIComponent(parcelId)}`],
     ['City permits (AB+C)', 'https://abc.austintexas.gov/web/permit/public-search-other'],
     ['Zoning · flood · historic (Property Profile)', 'https://maps.austintexas.gov/GIS/PropertyProfile/'],
-    ll && ['Street View', `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${ll}`],
     ll && ['Aerial', `https://www.google.com/maps/search/?api=1&query=${ll}`],
     ['Deed records', 'https://www.traviscountytx.gov/county-clerk/recording'],
   ].filter(Boolean);
   box.innerHTML = links
     .map(([t, h]) => `<a href="${h}" target="_blank" rel="noopener">${t} ↗</a>`)
     .join('');
+
+  // Google Street View link under the street-level panel (replaces the old
+  // full-screen popup button). Shown only when we have a centroid to point at.
+  const sg = document.getElementById('sv-google');
+  if (sg) {
+    if (ll) {
+      sg.href = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${ll}`;
+      sg.style.display = 'block';
+    } else {
+      sg.style.display = 'none';
+    }
+  }
 }
 
 // Site Check — pre-development flags for the selected parcel (precomputed columns
