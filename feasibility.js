@@ -26,8 +26,8 @@
   // Plain-language explanations shown in the per-line ⓘ tooltips (demo helper).
   const INFO = {
     lotArea:      'Total land area of the parcel, from TCAD records.',
-    buildable:    'Approximate floor area you could build, implied by the zoning’s FAR and lot-coverage limits.',
-    existingArea: 'Living area of the building currently on the lot (TCAD).',
+    buildable:    'Floor area you plan to build. Pre-filled with the maximum the zoning’s FAR and lot-coverage allow — edit it down to a realistic program (e.g. three 1,800 SF townhomes ≈ 5,400 SF).',
+    existingArea: 'Living area of the building currently on the lot (TCAD). Editable.',
     maxUnits:     'Maximum dwelling units the zoning allows here (includes Austin’s HOME rules).',
     unitsExisting:'Treated as one existing structure for the hold scenario.',
     land:         'What you pay for the land. Seeded from the TCAD land value — change it to your purchase price.',
@@ -241,7 +241,12 @@
     // ── Site summary ──
     const { wrap: siteSec, dl: siteDl } = dlSection('Site');
     siteDl.appendChild(row('Lot area', fmtSF(state.lotSqft), { info: INFO.lotArea }));
-    siteDl.appendChild(row(isHold ? 'Existing building area' : 'Buildable floor area', fmtSF(state.floorArea), { info: isHold ? INFO.existingArea : INFO.buildable }));
+    // Floor area is pre-filled from the zoning envelope but is editable: developers
+    // routinely build less than the FAR maximum, and the seeded max can be an
+    // unrealistic overbuild for a low unit count.
+    const faInp = numInput(Math.round(state.floorArea || 0), { min: 0, step: 100 });
+    faInp.addEventListener('change', () => { state.floorArea = parseFloat(faInp.value) || 0; render(container, state); });
+    siteDl.appendChild(row(isHold ? 'Existing building area (SF)' : 'Buildable floor area (SF)', '', { node: faInp, info: isHold ? INFO.existingArea : INFO.buildable }));
     siteDl.appendChild(row(isHold ? 'Units (existing)' : 'Max units', state.units != null ? String(state.units) : '—', { info: isHold ? INFO.unitsExisting : INFO.maxUnits }));
     container.appendChild(siteSec);
 

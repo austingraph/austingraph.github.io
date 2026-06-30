@@ -41,7 +41,10 @@ Click **Feasibility Report** (top of the panel). A full report opens with a mini
     - **Uses (costs)** — Land/acquisition (seeded from the county land value, ~$178k here), Hard cost $/SF, Soft costs %, Contingency 5%, Construction financing → **Total project cost**.
     - **Exit / income** — toggle **For-sale** and set a sale $/SF, or **Rental** for rent / cap-rate.
     - **Returns** — **Estimated profit**, **Return on cost**, **Return on equity**.
-11. **The magic moment — make it interactive.** Every tinted cell is editable. Change **Buildable floor area** to a realistic three-townhome build (~5,400 SF) and set **For-sale price** to a market ~$350/SF. The result banner **recomputes live** and flips green — an estimated profit on the order of **~$200K at roughly a 13% return on cost** _(illustrative — your screen shows the live figure)_.
+11. **The magic moment — make it interactive.** Every **tinted** cell is editable (plain rows are computed). Two edits tell the story:
+    - In **Exit / income**, toggle to **For-sale** and set **Sale price ($/SF)** toward market for new East-Austin construction (~$350–$400/SF). The result banner **recomputes live** and flips **green**.
+    - Optional, for realism: the **Buildable floor area (SF)** cell is pre-filled with the zoning maximum, which overbuilds for just 3 units — dial it down to a real program (~5,400 SF for three 1,800 SF townhomes) and watch every cost and the profit update instantly.
+    - _Exact figures are illustrative — your screen shows the live numbers; the point is that it recomputes the moment you change an assumption._
 12. Try **Residual land** — the banner rephrases to *"You could pay up to $X for the land to earn a 15% return on cost,"* and compares it to the county's land value. *"This answers the only question a land buyer really has: what can I pay?"*
 
 > **Takeaway:** *"In ninety seconds I went from a 1960 bungalow to a three-unit pro forma — zoning, costs, and returns — without leaving the map."*
