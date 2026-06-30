@@ -15,13 +15,18 @@
   const TYPOLOGIES = [
     { key: 'sf',       label: 'SF Detached',          hardMin: 175, hardMax: 260, softPct: 0.20, defUse: 'sale'   },
     { key: 'adu',      label: 'ADU / Cottage',         hardMin: 210, hardMax: 300, softPct: 0.22, defUse: 'rental' },
-    { key: 'duplex',   label: 'Duplex / Tri-plex',     hardMin: 160, hardMax: 240, softPct: 0.20, defUse: 'rental' },
+    { key: 'duplex',   label: 'Duplex / Tri-plex',     hardMin: 160, hardMax: 240, softPct: 0.20, defUse: 'sale'   },
     { key: 'small_mf', label: 'Small MF (5–20 units)', hardMin: 155, hardMax: 225, softPct: 0.22, defUse: 'rental' },
     { key: 'mixed',    label: 'Mixed-use / Concrete',  hardMin: 250, hardMax: 400, softPct: 0.25, defUse: 'rental' },
   ];
 
   // Cap rates: Marcus & Millichap Austin Q1 2025
   const DEFAULT_CAP = { sf: 0.055, adu: 0.0575, duplex: 0.055, small_mf: 0.055, mixed: 0.0675 };
+
+  // Typical built unit size (SF) for seeding a REALISTIC program — the FAR maximum
+  // is usually a big overbuild for the allowed unit count (e.g. 3 units ≠ 13,000 SF).
+  // null → size by FAR (commercial/mixed, where unit count isn't the right basis).
+  const UNIT_SF = { sf: 2200, adu: 800, duplex: 1600, small_mf: 950, mixed: null };
 
   // Plain-language explanations shown in the per-line ⓘ tooltips (demo helper).
   const INFO = {
@@ -377,9 +382,9 @@
     // loss until tailored to a real deal. Hover any ⓘ for what a line means.
     const poc = document.createElement('p');
     poc.className = 'feasibility-poc-note';
-    poc.innerHTML = '<b>Proof of concept.</b> These figures use generic cost, rent, and ' +
-      'interest-rate assumptions, so most scenarios show a loss by default. Every tinted input ' +
-      'is editable, and the model is built to be tailored to a real deal. Hover the ' +
+    poc.innerHTML = '<b>Screening estimate.</b> Figures use generic cost and interest-rate ' +
+      'assumptions with neighborhood market $/sqft and rent — a starting point, not an appraisal. ' +
+      'Every tinted input is editable; tailor them to a real deal. Hover the ' +
       '<b>ⓘ</b> on any line for what it means.';
     outer.appendChild(poc);
 
@@ -419,13 +424,30 @@
     const landVal    = appr.appr_land_val    || 0;
     const marketVal  = appr.appr_market_val  || 0;
     const livingSqft = appr.appr_living_sqft || 0;
+    const zoningBase = envelope?.zoning_base || appr.zoning_base || '';
+
+    // Realistic floor-area program: units × typical unit size, capped by the FAR
+    // maximum. Falls back to the FAR max when units or unit size are unknown
+    // (commercial/mixed). Keeps the seeded build from defaulting to a huge overbuild.
+    function programFloor(typoKey) {
+      const us = UNIT_SF[typoKey];
+      if (maxUnits && us) return Math.min(maxUnits * us, floorAreaMax || maxUnits * us);
+      return floorAreaMax;
+    }
+
+    // Existing-building unit count for the Hold scenario: a single-family / small
+    // building is one rental; a larger multifamily building is ~living ÷ 1,000 SF.
+    function holdUnits() {
+      if (/^SF/i.test(zoningBase) || (livingSqft || 0) <= 2500) return 1;
+      return Math.max(1, Math.round((livingSqft || 0) / 1000));
+    }
 
     const state = {
       scenario: 'by_right',
       mode: 'build',
       typology: typo,
       lotSqft,
-      floorArea: floorAreaMax,
+      floorArea: programFloor(typo.key),
       units: maxUnits ?? 1,
       landCost: landVal,
       costPerSqft: Math.round((typo.hardMin + typo.hardMax) / 2),
@@ -434,7 +456,9 @@
       holdMonths: 18,
       constrRate: parseFloat(((rates.prime || 7.5) + 2).toFixed(2)),
       ltc: 0.70,
-      useType: typo.defUse,
+      // Commercial/MF with no unit count can't be modeled as a 1-unit rental —
+      // exit on for-sale $/sqft instead (avoids the degenerate single-unit NOI).
+      useType: maxUnits == null ? 'sale' : typo.defUse,
       capRate: DEFAULT_CAP[typo.key],
       rentPerUnit: medRent,
       vacancyPct: 0.05,
@@ -479,7 +503,7 @@
       if (key === 'hold') {
         state.mode = 'hold';
         state.floorArea = livingSqft || floorAreaMax || 0;
-        state.units = 1;
+        state.units = holdUnits();   // multi-unit buildings rent more than one unit
         state.costPerSqft = 0;
         state.landCost = marketVal || 0;
         state.useType = 'rental';
@@ -487,22 +511,26 @@
         state.rentPerUnit = medRent;
       } else if (key === 'max_home') {
         state.mode = 'build';
-        seedFromTypology(densestTypology(maxUnits ?? 1));
+        const dt = densestTypology(maxUnits ?? 1);
+        seedFromTypology(dt);
         state.units = maxUnits ?? 1;
-        state.floorArea = floorAreaMax;
+        state.floorArea = programFloor(dt.key);
         state.landCost = landVal;
+        if (maxUnits == null) state.useType = 'sale';
       } else if (key === 'residual') {
         state.mode = 'residual';
         seedFromTypology(typo);
         state.units = maxUnits ?? 1;
-        state.floorArea = floorAreaMax;
+        state.floorArea = programFloor(typo.key);
         state.landCost = landVal;
+        if (maxUnits == null) state.useType = 'sale';
       } else { // by_right
         state.mode = 'build';
         seedFromTypology(typo);
         state.units = maxUnits ?? 1;
-        state.floorArea = floorAreaMax;
+        state.floorArea = programFloor(typo.key);
         state.landCost = landVal;
+        if (maxUnits == null) state.useType = 'sale';
       }
     }
 
