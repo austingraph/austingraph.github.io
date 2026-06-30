@@ -12,7 +12,8 @@
   const toolbar   = document.getElementById('report-toolbar');
   const mapEl     = document.getElementById('report-map');
   const locatorEl = document.getElementById('report-locator');
-  const printImg  = document.getElementById('report-print-img');
+  const printImg    = document.getElementById('report-print-img');
+  const printImgLoc = document.getElementById('report-print-img-locator');
   const dataEl    = document.getElementById('report-data');
   const notesEl   = document.getElementById('report-notes');
   const footerEl  = document.getElementById('report-footer-bar');
@@ -230,6 +231,7 @@
       zoom: 9.3,
       interactive: false,
       attributionControl: false,
+      preserveDrawingBuffer: true,   // so its canvas can be baked for printing
     });
     locatorMap.on('load', () => {
       locatorMap.resize();
@@ -438,6 +440,28 @@
     redrawMeasure();
   }
 
+  // Bake a live map's canvas into an <img> for printing (the maps themselves are
+  // hidden at @media print). Resolves when the image is ready — or on any failure,
+  // so a missing/empty map never hangs the print. Needs preserveDrawingBuffer.
+  function snapshotMap(map, img) {
+    return new Promise((resolve) => {
+      if (!map || !img) { if (img) { img.src = ''; img.style.display = 'none'; } resolve(); return; }
+      map.once('idle', () => {
+        try {
+          img.onload = () => resolve();
+          img.onerror = () => { img.style.display = 'none'; resolve(); };
+          img.style.display = '';
+          img.src = map.getCanvas().toDataURL('image/jpeg', 0.92);
+        } catch {
+          img.src = '';
+          img.style.display = 'none';
+          resolve();
+        }
+      });
+      map.triggerRepaint();
+    });
+  }
+
   // ── Toolbar ───────────────────────────────────────────────────────────────────
   function buildToolbar() {
     toolbar.innerHTML = '';
@@ -497,15 +521,12 @@
     printBtn.className = 'primary';
     printBtn.textContent = 'Print/Save PDF';
     printBtn.addEventListener('click', () => {
-      reportMap.once('idle', () => {
-        try {
-          printImg.src = reportMap.getCanvas().toDataURL('image/jpeg', 0.92);
-          printImg.onload = () => window.print();
-        } catch {
-          window.print();
-        }
-      });
-      reportMap.triggerRepaint();
+      // Bake BOTH live maps into their print <img>s, then print. The maps are
+      // hidden at @media print and these snapshots are shown side by side.
+      Promise.all([
+        snapshotMap(reportMap, printImg),
+        snapshotMap(locatorMap, printImgLoc),
+      ]).then(() => window.print());
     });
     row2.appendChild(printBtn);
     toolbar.appendChild(row2);
@@ -924,6 +945,7 @@
     notesEl.value = '';
     printImg.src = '';
     printImg.style.display = 'none';
+    if (printImgLoc) { printImgLoc.src = ''; printImgLoc.style.display = 'none'; }
     measuring = false;
     measurePts = [];
 
