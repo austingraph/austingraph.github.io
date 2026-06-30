@@ -590,7 +590,7 @@
   function buildAppraisalSection(data) {
     const row     = data.dbRow || {};
     const labels  = window.AG.EXEMPTION_LABELS || {};
-    const taxRate = window.AG.APPROX_TAX_RATE || 0.02;
+    const taxRate = (window.AG.taxRateForRow ? window.AG.taxRateForRow(row) : null) || window.AG.APPROX_TAX_RATE || 0.02;
     const usd = (n) => (n != null && n !== 0) ? '$' + Math.round(n).toLocaleString() : '—';
 
     const market   = row.appr_market_val;
@@ -635,10 +635,20 @@
       'The value the tax bill is actually computed on, after exemptions.']);
     rows.push(['Exemptions', codes.length ? codes.map((c) => labels[c] || c).join(', ') : 'None',
       'Tax exemptions on record (e.g. homestead, over-65, disabled veteran).']);
-    rows.push(['Est. annual tax', `${usd(estTax)}/yr (~${(taxRate * 100).toFixed(1)}%, Austin proper)`,
-      'Rough estimate = assessed value × ~2% (a typical Austin-proper combined rate). Actual varies by district.']);
+    rows.push(['Est. annual tax', `${usd(estTax)}/yr (~${(taxRate * 100).toFixed(1)}% combined)`,
+      'Estimate = assessed value × a representative combined rate chosen by jurisdiction (full-purpose Austin ≈ 2.0%, ETJ/limited ≈ 1.6%). A true bill depends on the exact overlapping taxing units (county, city, ISD, MUD, ESD).']);
     rows.push(['Tax as % of market', `${(estTax / market * 100).toFixed(2)}%`,
       'Estimated annual tax divided by market value.']);
+    // Neighborhood market context (Redfin sale $/sqft + Zillow ZORI rent) by ZIP.
+    const mkt = data.market || (window.AG.lastPanelData && window.AG.lastPanelData.market);
+    if (mkt && mkt.status === 'ok') {
+      if (mkt.median_sale_ppsf) rows.push(['Neighborhood sale $/sqft',
+        `$${Math.round(mkt.median_sale_ppsf).toLocaleString()}/sqft (ZIP ${mkt.zip})`,
+        'Redfin median sale price per sqft for this ZIP — the market benchmark behind the feasibility Sale-price default. Aggregate (non-disclosure state), so use the Comps links to refine.']);
+      if (mkt.zori_rent) rows.push(['Neighborhood market rent',
+        `$${Math.round(mkt.zori_rent).toLocaleString()}/mo (ZIP ${mkt.zip})`,
+        'Zillow Observed Rent Index (ZORI) for this ZIP — typical asking rent, behind the feasibility Rent default.']);
+    }
     if (land && market)        rows.push(['Land share of value', `${Math.round(land / market * 100)}% (redevelopment signal)`,
       'Land value ÷ market value. A high share can signal a tear-down / redevelopment candidate.']);
     if (land && lotSqft > 0)   rows.push(['Land $/sqft', `$${(land / lotSqft).toFixed(2)}`,
@@ -888,7 +898,7 @@
     const income = demo && demo.median_hh_income;
     const rent   = demo && demo.median_gross_rent;
 
-    const taxRate = window.AG.APPROX_TAX_RATE || 0.02;
+    const taxRate = (window.AG.taxRateForRow ? window.AG.taxRateForRow(row) : null) || window.AG.APPROX_TAX_RATE || 0.02;
     const estTax  = Math.round((row.appr_assessed_val || market) * taxRate);
     const usd = (n) => (n != null && isFinite(n)) ? '$' + Math.round(n).toLocaleString() : '—';
 

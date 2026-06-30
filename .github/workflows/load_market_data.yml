@@ -1,0 +1,65 @@
+name: Load market context
+
+# Loads free aggregate market data (Redfin median sale $/sqft + Zillow ZORI rent)
+# keyed by ZIP, and joins each parcel to its ZIP. A defensible substitute for
+# Texas's non-disclosure sale prices — used to seed the feasibility report's
+# Sale-price and Rent defaults. Run on demand from the Actions tab.
+#
+# Usage:
+#   1. mode = inspect → fetch Redfin + Zillow, print sample ZIPs, NO DB write
+#      (confirms the source URLs/columns still parse).
+#   2. mode = load    → ZIP spatial-join + Redfin + Zillow + upsert market_context.
+#      (mode = load-skip-zip reuses the existing parcels.zip join — faster reload
+#       of just the market numbers.)
+#
+# Requires the DATABASE_URL repo secret (Supabase session-pooler, service role).
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "inspect = fetch only · load = full · load-skip-zip = market only"
+        type: choice
+        default: "inspect"
+        options:
+          - "inspect"
+          - "load"
+          - "load-skip-zip"
+
+concurrency:
+  group: load-market
+  cancel-in-progress: false
+
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r scripts/ingest/requirements.txt
+
+      # Deploy the market_context table + parcels.zip + the parcel_market_context
+      # RPC before a real load. Skipped for inspect (no DB writes there).
+      - name: Apply schema + RPC (load modes only)
+        if: ${{ inputs.mode != 'inspect' }}
+        run: |
+          command -v psql >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client; }
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/market_schema.sql
+
+      - name: Run loader
+        run: |
+          case "${{ inputs.mode }}" in
+            inspect)      FLAG="--inspect" ;;
+            load)         FLAG="" ;;
+            load-skip-zip) FLAG="--skip-zip" ;;
+          esac
+          echo "Running: load_market_context.py $FLAG"
+          python scripts/ingest/load_market_context.py $FLAG

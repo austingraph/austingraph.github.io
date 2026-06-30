@@ -50,7 +50,7 @@
     opex:         'Operating costs (taxes, insurance, maintenance) as a percent of rent.',
     noi:          'Net operating income — rent left after vacancy and operating expenses.',
     cap:          'Capitalization rate — the market yield used to value the income. Lower cap = higher value.',
-    salePsf:      'Expected sale price per square foot of finished space.',
+    salePsf:      'Expected sale price per square foot of finished space. Pre-filled from the ZIP’s Redfin median sale $/sqft when available (else a generic default) — verify against the Comps & listings links and adjust.',
     exitValue:    'What the finished project is worth: NOI ÷ cap rate (rental) or area × sale price (for-sale).',
     impliedValue: 'Value of the income at the chosen cap rate (NOI ÷ cap rate).',
     profit:       'Exit value minus total project cost.',
@@ -404,7 +404,15 @@
     const lotSqft      = envelope?.lot_sqft     || 0;
     const floorAreaMax = Math.round(envelope?.max_far_sqft || envelope?.buildable_sqft || 0);
     const maxUnits     = envelope?.max_units    ?? null;
-    const medRent      = demographics?.median_gross_rent || 1800;
+
+    // Neighborhood market context (Redfin sale $/sqft + Zillow ZORI rent) by ZIP,
+    // fetched by app.js. Texas is non-disclosure, so these aggregate medians are
+    // the best available defaults for Sale price and Rent (override the generics).
+    const mkt        = window.AG?.lastPanelData?.market;
+    const hasMkt     = mkt && mkt.status === 'ok';
+    const medRent    = (hasMkt && mkt.zori_rent) ? Math.round(mkt.zori_rent)
+                     : (demographics?.median_gross_rent || 1800);
+    const salePsfSeed = (hasMkt && mkt.median_sale_ppsf) ? Math.round(mkt.median_sale_ppsf) : 280;
 
     // Appraisal values (from the row app.js stashed) seed scenario defaults.
     const appr       = window.AG?.lastPanelData?.dbRow || {};
@@ -431,7 +439,7 @@
       rentPerUnit: medRent,
       vacancyPct: 0.05,
       expensePct: 0.35,
-      salePsf: 280,
+      salePsf: salePsfSeed,
       targetRoc: 0.15,
       tcadLandVal: landVal,
       rates,

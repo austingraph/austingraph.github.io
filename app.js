@@ -141,8 +141,19 @@ const elApprStatus  = document.getElementById('appr-status');
 // Approximate combined tax rate for Austin-proper parcels (2025 rates).
 // Travis County 0.3758 + City of Austin 0.5240 + AISD 0.9252 + ACC+Health ~0.18 ≈ 2.00%.
 // Actual rate varies by school district, MUD, and special districts.
-// TODO: per-entity rate lookup for accurate bill
 const APPROX_TAX_RATE = 0.020;
+
+// Representative combined property-tax rate, chosen by jurisdiction. TCAD's roll
+// carries no per-parcel taxing units, so we approximate from sitecheck_jurisdiction:
+// full-purpose Austin parcels pay city+county+ISD+college+health (~2.0%); ETJ /
+// limited-purpose parcels pay no city tax (~1.6%). A true bill needs the exact
+// overlapping taxing units (county, city, ISD, MUD, ESD …).
+function taxRateForRow(row) {
+  const j = String((row && row.sitecheck_jurisdiction) || '').toUpperCase();
+  if (/FULL PURPOSE/.test(j)) return 0.020;
+  if (/ETJ|LIMITED|LTD|\bMILE\b/.test(j)) return 0.016;
+  return APPROX_TAX_RATE;
+}
 
 const EXEMPTION_LABELS = {
   HS: 'Homestead', OV65: 'Over-65 freeze', DP: 'Disabled person',
@@ -173,6 +184,7 @@ function stateCdLabel(code) {
 
 // Shared with report.js (full appraisal block reuses the tax rate + labels).
 window.AG.APPROX_TAX_RATE = APPROX_TAX_RATE;
+window.AG.taxRateForRow = taxRateForRow;
 window.AG.EXEMPTION_LABELS = EXEMPTION_LABELS;
 window.AG.stateCdLabel = stateCdLabel;
 
@@ -235,10 +247,11 @@ function renderAppraisal(row) {
     elApprAssessed.textContent = fmtUSD(assessed) || dash;
   }
 
-  // Estimated tax — based on assessed value, ~2% rate
+  // Estimated tax — assessed value × the jurisdiction's representative rate
   const taxBase = assessed || market;
+  const taxRate = taxRateForRow(row);
   elApprTax.textContent = taxBase
-    ? `${fmtUSD(Math.round(taxBase * APPROX_TAX_RATE))}/yr (est. ~2%)`
+    ? `${fmtUSD(Math.round(taxBase * taxRate))}/yr (est. ~${(taxRate * 100).toFixed(1)}%)`
     : dash;
 
   // Owner — name is intentionally not displayed; available from TCAD on request.
@@ -433,6 +446,22 @@ function openPanel(parcelId, geometry) {
       elPlanSt.textContent = 'Could not load planning context.';
       elApprStatus.textContent = 'Could not load appraisal data.';
     });
+
+  // Neighborhood market context (Redfin sale $/sqft + Zillow ZORI rent) by ZIP.
+  // Separate, fault-tolerant fetch so a missing table/RPC never breaks the panel;
+  // stashed for the report + feasibility seeding (Sale-price / Rent defaults).
+  if (window.AG.lastPanelData) window.AG.lastPanelData.market = null;
+  fetch(`${SUPABASE_URL}/rest/v1/rpc/parcel_market_context`, {
+    method: 'POST',
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_parcel_id: parcelId }),
+  })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => {
+      if (token !== metaFetchToken) return;
+      if (d && d.status === 'ok' && window.AG.lastPanelData) window.AG.lastPanelData.market = d;
+    })
+    .catch(() => {});
 
   panel.classList.add('open');
   panel.setAttribute('aria-hidden', 'false');
