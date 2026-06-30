@@ -1235,6 +1235,9 @@ body {
 .feasibility-subsection .report-row--indent dt { padding-left: 14px; }
 
 @media print {
+  /* The app locks html/body to one viewport (height:100%; overflow:hidden) for
+     the full-screen map. That clips printing to a single page, so release it. */
+  html, body { height: auto !important; overflow: visible !important; }
   body > *:not(#report-modal) { display: none !important; }
   #report-modal {
     position: static;
