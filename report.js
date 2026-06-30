@@ -495,7 +495,7 @@
 
     const printBtn = document.createElement('button');
     printBtn.className = 'primary';
-    printBtn.textContent = 'Print';
+    printBtn.textContent = 'Print/Save PDF';
     printBtn.addEventListener('click', () => {
       reportMap.once('idle', () => {
         try {

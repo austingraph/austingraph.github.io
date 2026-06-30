@@ -1240,9 +1240,15 @@ body {
     position: static;
     background: none;
     display: block;
+    overflow: visible;
   }
   #report-modal-inner {
     box-shadow: none;
+    /* The on-screen card is a scroll viewport (overflow-y:auto + max-height).
+       At print time that clips everything past the first page, so let the
+       content flow and paginate naturally. */
+    overflow: visible;
+    height: auto;
     max-height: none;
     border-radius: 0;
     padding: 12px;
@@ -1254,4 +1260,6 @@ body {
   /* Swap live maps for the baked snapshot at print time */
   #report-map, #report-locator { display: none !important; }
   #report-print-img { display: block !important; break-inside: avoid; }
+  /* Keep individual sections from splitting awkwardly across page breaks */
+  .report-section, .feasibility-subsection { break-inside: avoid; }
 }
