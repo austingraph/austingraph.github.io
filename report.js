@@ -847,8 +847,24 @@
     const line = pts.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.market).toFixed(1)}`).join(' ');
     const dots = pts.map((p, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(p.market).toFixed(1)}" r="2" />`).join('');
 
+    // Compact money for the per-point labels (e.g. $515k, $1.2M).
+    const compact = (n) => n >= 1e6
+      ? '$' + (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + 'M'
+      : '$' + Math.round(n / 1000) + 'k';
+
+    // Per-point year + value labels, overlaid as HTML positioned by percentage.
+    // (The SVG is stretched via preserveAspectRatio="none", so SVG <text> would
+    // distort — % positioning over the chart box aligns with the dots cleanly.)
+    // Anchor end points inward (l/r) so edge labels don't clip off the chart.
+    const labels = pts.map((p, i) => {
+      const px = ((x(i) / W) * 100).toFixed(2);
+      const py = ((y(p.market) / H) * 100).toFixed(2);
+      const a = i === 0 ? 'l' : (i === pts.length - 1 ? 'r' : 'c');
+      return `<span class="spark-val spark-${a}" style="left:${px}%;top:${py}%">${compact(p.market)}</span>` +
+             `<span class="spark-yr spark-${a}" style="left:${px}%">${p.yr}</span>`;
+    }).join('');
+
     const first = pts[0], last = pts[pts.length - 1];
-    const usd = (n) => '$' + Math.round(n).toLocaleString();
     const pctChange = ((last.market - first.market) / first.market) * 100;
     const sign = pctChange >= 0 ? '+' : '';
     const cls = pctChange >= 0 ? 'up' : 'down';
@@ -857,9 +873,12 @@
     wrap.className = 'spark';
     wrap.innerHTML =
       `<div class="value-context-title">Market value trend</div>` +
-      `<svg class="spark-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">` +
-        `<path d="${line}" fill="none" />${dots}</svg>` +
-      `<div class="spark-cap">${first.yr} ${usd(first.market)} → ${last.yr} ${usd(last.market)} ` +
+      `<div class="spark-chart">` +
+        `<svg class="spark-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">` +
+          `<path d="${line}" fill="none" />${dots}</svg>` +
+        labels +
+      `</div>` +
+      `<div class="spark-cap">Change ${first.yr}–${last.yr}: ` +
         `<span class="spark-chg ${cls}">${sign}${pctChange.toFixed(0)}%</span></div>`;
     return wrap;
   }

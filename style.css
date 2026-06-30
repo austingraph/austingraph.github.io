@@ -220,15 +220,36 @@ body {
 /* ── Value-over-time sparkline (report) ────────────────────────────────────── */
 .value-history { margin: 2px 0 12px; }
 .value-history.has-data { margin-bottom: 14px; }
+/* Chart box: the labels are positioned relative to this (= the SVG's 54px box),
+   with vertical margins giving the per-point value/year labels room to sit
+   above/below the line. */
+.spark-chart { position: relative; height: 54px; margin: 22px 0 24px; }
 .spark-svg {
   display: block;
   width: 100%;
   height: 54px;
-  margin-top: 2px;
   overflow: visible;
 }
 .spark-svg path { stroke: #e8a838; stroke-width: 2; }
 .spark-svg circle { fill: #b8860b; }
+
+/* Per-point labels overlaid on the chart (value above the dot, year along the
+   bottom). End points anchor inward so they don't clip off the edges. */
+.spark-val, .spark-yr {
+  position: absolute;
+  font-size: 10px;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+.spark-val { color: #6b4a10; font-weight: 600; transform: translate(-50%, -150%); }
+.spark-yr  { color: #999; top: 100%; transform: translate(-50%, 5px); }
+.spark-val.spark-l { transform: translate(0, -150%); }
+.spark-val.spark-r { transform: translate(-100%, -150%); }
+.spark-yr.spark-l  { transform: translate(0, 5px); }
+.spark-yr.spark-r  { transform: translate(-100%, 5px); }
+
 .spark-cap { font-size: 11px; color: #777; margin-top: 4px; }
 .spark-chg { font-weight: 600; }
 .spark-chg.up { color: #2e8b57; }
