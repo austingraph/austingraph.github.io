@@ -28,6 +28,11 @@
   // null → size by FAR (commercial/mixed, where unit count isn't the right basis).
   const UNIT_SF = { sf: 2200, adu: 800, duplex: 1600, small_mf: 950, mixed: null };
 
+  // Multi-year hold model constants: selling costs at exit (commission + closing)
+  // and the IRS straight-line schedule for residential rental improvements.
+  const SELL_COST = 0.06;
+  const DEP_YEARS = 27.5;
+
   // Plain-language explanations shown in the per-line ⓘ tooltips (demo helper).
   const INFO = {
     lotArea:      'Total land area of the parcel, from TCAD records.',
@@ -68,6 +73,22 @@
     targetRoc:    'The return you want to earn. It drives the land price you can afford to pay.',
     residualLand: 'The most you could pay for the land and still hit your target return.',
     vsTcadLand:   'TCAD’s land value, shown for comparison.',
+    holdYears:    'How many years you keep the property before selling.',
+    rentGrowth:   'How fast rents (and so income) grow per year. Austin has averaged ~2–4% long-run.',
+    exitCap:      'Cap rate used to value the property when you sell. A higher exit cap = a lower sale price (conservative).',
+    ltv:          'Loan-to-value: the share of the purchase financed with a mortgage; the rest is your cash.',
+    mortRate:     'Interest rate on a 30-year fixed investment mortgage. Seeded from the live FRED average.',
+    mortLoan:     'The mortgage amount: value × loan-to-value.',
+    equityIn:     'Cash you put in at purchase: value minus the mortgage.',
+    debtService:  'Yearly mortgage payment (principal + interest, 30-year amortization).',
+    cashOnCash:   'Year-1 cash flow (NOI minus mortgage payments) ÷ the cash you invested. The income return on your actual cash.',
+    dscr:         'Debt-service coverage ratio: NOI ÷ annual mortgage payment. Lenders typically want 1.20–1.25+.',
+    saleProceeds: 'Estimated cash from selling at the end of the hold: exit-year income ÷ exit cap, minus ~6% selling costs and the remaining loan balance.',
+    irr:          'Internal rate of return on your cash — the annualized return counting every year’s cash flow plus the sale. The headline metric investors screen with.',
+    equityMult:   'Total cash back (all cash flows + sale proceeds) ÷ cash invested. 2.0× means you doubled your money over the hold.',
+    taxBracket:   'Your marginal income-tax rate — used only to estimate the depreciation tax shield.',
+    depreciation: 'Simplified straight-line deduction: the building share of your basis spread over 27.5 years (land is not depreciable; the split uses TCAD’s land/building ratio). Consult a CPA — real schedules, recapture, and passive-loss rules vary.',
+    taxShield:    'Income tax the depreciation deduction saves each year: deduction × your tax bracket. Reduces taxes on rental income; not included in the IRR above.',
   };
 
   let cachedRates = null;
@@ -144,6 +165,72 @@
     };
   }
 
+  // ── Multi-year hold math (Hold scenario only) ─────────────────────────────
+  // IRR by bisection on NPV. cashflows[0] is the (negative) initial equity;
+  // returns null when no root exists in (−95%, +100%) — e.g. a total-loss deal.
+  function irr(cashflows) {
+    const npv = (r) => cashflows.reduce((acc, cf, t) => acc + cf / Math.pow(1 + r, t), 0);
+    let lo = -0.95, hi = 1.0;
+    let fLo = npv(lo), fHi = npv(hi);
+    if (!isFinite(fLo) || !isFinite(fHi) || fLo * fHi > 0) return null;
+    for (let i = 0; i < 100; i++) {
+      const mid = (lo + hi) / 2, fMid = npv(mid);
+      if (fLo * fMid <= 0) { hi = mid; } else { lo = mid; fLo = fMid; }
+    }
+    return (lo + hi) / 2;
+  }
+
+  // 30-year-mortgage hold: buy at s.landCost (the basis), finance at s.ltv /
+  // s.mortRate, grow NOI at s.rentGrowth, sell in year s.holdYears at s.exitCap.
+  // Returns null when the model can't run (no income / no basis / no equity).
+  function computeHold10(s, noi) {
+    const basis = s.landCost || 0;
+    const N = Math.max(2, Math.round(s.holdYears || 10));
+    if (!(noi > 0) || !(basis > 0)) return null;
+
+    const loan = basis * (s.ltv || 0);
+    const equity0 = basis - loan;
+    if (equity0 <= 0) return null;
+
+    // Monthly amortization over 30 years; r=0 degrades to straight principal.
+    const months = 360;
+    const r = (s.mortRate || 0) / 100 / 12;
+    const pay = loan <= 0 ? 0
+      : r > 0 ? loan * r / (1 - Math.pow(1 + r, -months))
+      : loan / months;
+    const ads = pay * 12;
+    const m = N * 12;
+    const balance = loan <= 0 ? 0
+      : r > 0 ? loan * (Math.pow(1 + r, months) - Math.pow(1 + r, m)) / (Math.pow(1 + r, months) - 1)
+      : loan * (1 - m / months);
+
+    const g = s.rentGrowth || 0;
+    const noiAt = (t) => noi * Math.pow(1 + g, t - 1);          // year t income
+    const exitCap = s.exitCap || 0;
+    const sale = exitCap > 0 ? noiAt(N + 1) / exitCap : 0;
+    const saleNet = sale * (1 - SELL_COST) - balance;
+
+    const flows = [-equity0];
+    let totalCF = 0;
+    for (let t = 1; t <= N; t++) {
+      const cf = noiAt(t) - ads;
+      totalCF += cf;
+      flows.push(t === N ? cf + saleNet : cf);
+    }
+
+    const coc1 = (noiAt(1) - ads) / equity0;
+    const dscr1 = ads > 0 ? noi / ads : null;
+    const irrVal = irr(flows);
+    const equityMult = (totalCF + saleNet) / equity0;
+
+    // Depreciation (screening estimate): building share of basis over 27.5 years.
+    const share = s.imprShare;
+    const annualDep = (share > 0) ? basis * share / DEP_YEARS : null;
+    const taxShield = (annualDep != null) ? annualDep * (s.taxBracket || 0) : null;
+
+    return { N, loan, equity0, ads, coc1, dscr1, saleNet, irrVal, equityMult, annualDep, taxShield };
+  }
+
   // ── Formatting helpers ────────────────────────────────────────────────────
   const fmt$ = (n) => n == null ? '—' :
     '$' + Math.round(n).toLocaleString();
@@ -215,6 +302,7 @@
     const mode = state.mode || 'build';
     const isHold = mode === 'hold';
     const isResidual = mode === 'residual';
+    const h10 = isHold ? computeHold10(state, c.noi) : null;
 
     // ── Result banner (plain-language headline for the active scenario) ──
     let bigLabel, bigVal, subText, sign;
@@ -226,7 +314,8 @@
     } else if (isHold) {
       bigLabel = 'Annual income (NOI)';
       bigVal   = fmt$(c.noi);
-      subText  = `${fmtPct(c.yieldUnlev)} yield on current value`;
+      subText  = `${fmtPct(c.yieldUnlev)} yield on current value` +
+        (h10 && h10.irrVal != null ? ` · ${fmtPct(h10.irrVal)} ${h10.N}-yr IRR` : '');
       sign     = c.noi;
     } else {
       bigLabel = 'Estimated profit';
@@ -337,6 +426,53 @@
     }
     exitDl.appendChild(row(isHold ? 'Implied value (@ cap)' : 'Exit value', fmt$(c.exitValue), { strong: true, sep: true, info: isHold ? INFO.impliedValue : INFO.exitValue }));
     container.appendChild(exitSec);
+
+    // ── Multi-year hold & exit (hold only) ──
+    // Mortgage-financed hold: yearly cash flow at growing rents, sale at exit →
+    // IRR / equity multiple / cash-on-cash — the metrics investors screen with.
+    if (isHold && h10) {
+      const { wrap: hSec, dl: hDl } = dlSection(`${h10.N}-year hold & exit`);
+
+      const yrsInp = numInput(state.holdYears, { min: 2, max: 30, step: 1 });
+      yrsInp.addEventListener('change', () => { state.holdYears = parseInt(yrsInp.value) || state.holdYears; render(container, state); });
+      hDl.appendChild(row('Hold period (years)', '', { node: yrsInp, info: INFO.holdYears }));
+
+      const growInp = numInput(fmtPctInput(state.rentGrowth), { min: 0, max: 10, step: 0.5 });
+      growInp.addEventListener('change', () => { state.rentGrowth = (parseFloat(growInp.value) || 0) / 100; render(container, state); });
+      hDl.appendChild(row('Rent growth (%/yr)', '', { node: growInp, info: INFO.rentGrowth }));
+
+      const xcapInp = numInput(fmtPctInput(state.exitCap), { min: 1, max: 15, step: 0.25 });
+      xcapInp.addEventListener('change', () => { state.exitCap = (parseFloat(xcapInp.value) || 0) / 100; render(container, state); });
+      hDl.appendChild(row('Exit cap rate (%)', '', { node: xcapInp, info: INFO.exitCap }));
+
+      const ltvInp = numInput(Math.round(state.ltv * 100), { min: 0, max: 90, step: 5 });
+      ltvInp.addEventListener('change', () => { state.ltv = (parseFloat(ltvInp.value) || 0) / 100; render(container, state); });
+      hDl.appendChild(row('Loan-to-value (%)', '', { node: ltvInp, info: INFO.ltv }));
+
+      const mrateInp = numInput(state.mortRate, { min: 1, max: 15, step: 0.25 });
+      mrateInp.addEventListener('change', () => { state.mortRate = parseFloat(mrateInp.value) || state.mortRate; render(container, state); });
+      hDl.appendChild(row('Mortgage rate (%)', '', { node: mrateInp, info: INFO.mortRate }));
+
+      hDl.appendChild(row('Mortgage loan', fmt$(h10.loan), { indent: true, info: INFO.mortLoan }));
+      hDl.appendChild(row('Equity invested', fmt$(h10.equity0), { indent: true, info: INFO.equityIn }));
+      hDl.appendChild(row('Annual debt service', fmt$(h10.ads), { indent: true, info: INFO.debtService }));
+      hDl.appendChild(row('Cash-on-cash (yr 1)', fmtPct(h10.coc1), { info: INFO.cashOnCash }));
+      hDl.appendChild(row('DSCR (yr 1)', h10.dscr1 != null ? h10.dscr1.toFixed(2) + '×' : '—', { info: INFO.dscr }));
+      hDl.appendChild(row(`Net sale proceeds (yr ${h10.N})`, fmt$(h10.saleNet), { sep: true, info: INFO.saleProceeds }));
+      hDl.appendChild(row('IRR (levered)', fmtPct(h10.irrVal), { strong: true, info: INFO.irr }));
+      hDl.appendChild(row('Equity multiple', isFinite(h10.equityMult) ? h10.equityMult.toFixed(2) + '×' : '—', { strong: true, info: INFO.equityMult }));
+
+      // Depreciation tax shield — screening estimate, only when TCAD gives us a
+      // land/building split to base the depreciable basis on.
+      if (h10.annualDep != null) {
+        const braInp = numInput(Math.round(state.taxBracket * 100), { min: 0, max: 50, step: 1 });
+        braInp.addEventListener('change', () => { state.taxBracket = (parseFloat(braInp.value) || 0) / 100; render(container, state); });
+        hDl.appendChild(row('Tax bracket (%)', '', { node: braInp, sep: true, info: INFO.taxBracket }));
+        hDl.appendChild(row('Depreciation deduction (/yr)', fmt$(h10.annualDep), { indent: true, info: INFO.depreciation }));
+        hDl.appendChild(row('Est. tax shield (/yr)', fmt$(h10.taxShield), { indent: true, info: INFO.taxShield }));
+      }
+      container.appendChild(hSec);
+    }
 
     // ── Returns ──
     const { wrap: retSec, dl: retDl } = dlSection('Returns');
@@ -467,6 +603,17 @@
       targetRoc: 0.15,
       tcadLandVal: landVal,
       rates,
+      // Multi-year hold model (Hold scenario). Exit cap defaults 50bps above the
+      // going-in cap (a conservative standard); mortgage from the live FRED 30-yr.
+      holdYears: 10,
+      rentGrowth: 0.03,
+      exitCap: DEFAULT_CAP.sf + 0.005,
+      ltv: 0.70,
+      mortRate: parseFloat((rates.mortgage30 || 6.5).toFixed(2)),
+      taxBracket: 0.32,
+      // Building share of value (depreciable basis split) from TCAD's own
+      // land/improvement ratio; null hides the depreciation lines.
+      imprShare: (marketVal > 0 && appr.appr_impr_val > 0) ? appr.appr_impr_val / marketVal : null,
     };
 
     // Densest typology the unit count allows (for the Max-density scenario).
@@ -494,7 +641,7 @@
     const SCEN_DESC = {
       by_right: 'Tear down and rebuild what the zoning allows by right. Land basis = TCAD land value.',
       max_home: 'Build the most units the lot allows (including HOME rules), at the densest building type.',
-      hold:     'Keep and rent the existing building — no construction. Shows current income and yield on today’s value.',
+      hold:     'Keep and rent the existing building — no construction. Models a mortgage-financed multi-year hold: yearly cash flow, then a sale at exit → IRR and equity multiple.',
       residual: 'Works backwards: the most you could pay for the land and still hit your target return.',
     };
 
