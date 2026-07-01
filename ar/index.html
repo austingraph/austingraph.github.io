@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>austingraph — on-site AR</title>
+  <style>
+    body { margin: 0; padding: 24px; background: #16181c; color: #ddd;
+           font: 14px/1.5 -apple-system, 'Segoe UI', sans-serif; }
+    h1 { font-size: 20px; margin: 0 0 4px; color: #fff; }
+    .sub { color: #9aa0a6; margin: 0 0 20px; }
+    .sub a { color: #e8a838; }
+    #cards { display: flex; flex-wrap: wrap; gap: 16px; }
+    .card { background: #1c1f24; border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 10px; padding: 16px; width: 300px; box-sizing: border-box; }
+    .card h2 { font-size: 15px; margin: 0 0 2px; color: #fff; }
+    .pid { font-size: 11px; color: #9aa0a6; margin: 0 0 10px; }
+    .qr { background: #fff; border-radius: 6px; padding: 8px; width: fit-content; margin: 0 0 10px; }
+    .qr svg { display: block; }
+    .links a { display: inline-block; font-size: 12px; padding: 5px 10px; margin: 0 6px 6px 0;
+               border-radius: 6px; background: rgba(255,255,255,0.07);
+               border: 1px solid rgba(255,255,255,0.14); color: #ddd; text-decoration: none; }
+    .links a:hover { background: rgba(255,255,255,0.14); color: #fff; }
+    .notes { font-size: 12px; color: #9aa0a6; margin: 8px 0 0; }
+    #status { color: #9aa0a6; }
+  </style>
+</head>
+<body>
+  <h1>On-site AR</h1>
+  <p class="sub">Scan a QR code with an iPhone/iPad camera to open the model in AR at the
+    site, or tap a link on the device itself. Placement &amp; demo checklist:
+    <a href="GUIDE.md">GUIDE.md</a> · back to the <a href="../">parcel map</a>.</p>
+  <p id="status">Loading manifest…</p>
+  <div id="cards"></div>
+
+  <script src="https://unpkg.com/qrcode-generator@1.4.4/qrcode.js"></script>
+  <script>
+    const cards = document.getElementById('cards');
+    const status = document.getElementById('status');
+
+    function qrSvg(text) {
+      const qr = qrcode(0, 'M');   // type 0 = auto-size
+      qr.addData(text);
+      qr.make();
+      return qr.createSvgTag({ cellSize: 4, margin: 0 });
+    }
+
+    function card(id, entry) {
+      const el = document.createElement('div');
+      el.className = 'card';
+      const h = document.createElement('h2');
+      h.textContent = entry.title || (id ? 'Parcel ' + id : 'Untitled');
+      el.appendChild(h);
+      const pid = document.createElement('p');
+      pid.className = 'pid';
+      pid.textContent = id ? 'TCAD parcel ' + id : 'Available on every parcel (test entry)';
+      el.appendChild(pid);
+
+      // QR encodes the absolute USDZ URL — iPhone camera → Safari → AR Quick Look.
+      // Skipped gracefully if the QR library failed to load (e.g. offline on site).
+      if (entry.model && typeof qrcode !== 'undefined') {
+        const url = new URL(entry.model, location.href).href;
+        const qr = document.createElement('div');
+        qr.className = 'qr';
+        qr.innerHTML = qrSvg(url);
+        el.appendChild(qr);
+      }
+
+      const links = document.createElement('div');
+      links.className = 'links';
+      if (entry.model) {
+        const a = document.createElement('a');
+        a.rel = 'ar';
+        a.href = entry.model + '#allowsContentScaling=0';
+        a.textContent = 'Open in AR (.usdz)';
+        links.appendChild(a);
+      }
+      if (entry.pano) {
+        const a = document.createElement('a');
+        a.href = '../panorama.html?pano=' + encodeURIComponent('ar/' + entry.pano) +
+          '&title=' + encodeURIComponent(entry.title || '360° view');
+        a.textContent = '360° view';
+        links.appendChild(a);
+      }
+      if (entry.hoverlay) {
+        const a = document.createElement('a');
+        a.href = entry.hoverlay; a.target = '_blank'; a.rel = 'noopener';
+        a.textContent = 'Hoverlay scene ↗';
+        links.appendChild(a);
+      }
+      el.appendChild(links);
+
+      if (entry.notes) {
+        const n = document.createElement('p');
+        n.className = 'notes';
+        n.textContent = entry.notes;
+        el.appendChild(n);
+      }
+      return el;
+    }
+
+    fetch('manifest.json')
+      .then((r) => r.json())
+      .then((m) => {
+        status.textContent = '';
+        if (m.default) cards.appendChild(card(null, m.default));
+        for (const [id, entry] of Object.entries(m.parcels || {})) {
+          cards.appendChild(card(id, entry));
+        }
+        if (!cards.children.length) status.textContent = 'No AR sites in the manifest yet.';
+      })
+      .catch(() => { status.textContent = 'Could not load manifest.json.'; });
+  </script>
+</body>
+</html>

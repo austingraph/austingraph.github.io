@@ -1,0 +1,9 @@
+{
+  "_readme": "On-site AR / 360 content per parcel. Keys under 'parcels' are TCAD property IDs (the panel header value). Each entry may have: title, model (USDZ path relative to ar/), pano (equirectangular image path relative to ar/), hoverlay (scene URL), notes. The 'default' entry is offered on EVERY parcel — handy while testing; delete it once real models exist. See ar/GUIDE.md for the full workflow.",
+  "default": {
+    "title": "Calibration cube (1 m test)",
+    "model": "models/calibration-cube.usdz",
+    "notes": "Test model: an orange cube exactly 1 m per side. Place it on the ground and check the scale before trusting a building model."
+  },
+  "parcels": {}
+}

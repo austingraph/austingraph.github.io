@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>austingraph — 360° view</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css" />
+  <style>
+    html, body { margin: 0; height: 100%; background: #16181c; }
+    #pano { width: 100%; height: 100%; }
+    /* "Enable motion" — iOS 13+ requires a user gesture to grant gyroscope access,
+       so orientation can't just start on load there. */
+    #motion-btn {
+      position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+      z-index: 10; display: none; padding: 10px 18px; font-size: 14px;
+      font-family: -apple-system, 'Segoe UI', sans-serif;
+      background: #e8a838; color: #111; border: none; border-radius: 8px; cursor: pointer;
+    }
+    #err {
+      position: absolute; top: 40%; width: 100%; text-align: center; color: #9aa0a6;
+      font-family: -apple-system, 'Segoe UI', sans-serif; font-size: 14px; padding: 0 20px;
+      box-sizing: border-box;
+    }
+  </style>
+</head>
+<body>
+  <div id="pano"></div>
+  <button id="motion-btn">Enable motion — look around by turning the device</button>
+  <div id="err" style="display:none"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
+  <script>
+    // Usage: panorama.html?pano=<equirectangular image URL>&title=<label>
+    // Stand at the viewpoint the panorama was rendered from, tap "Enable motion",
+    // and turning your body turns the simulated scene with you.
+    const params = new URLSearchParams(location.search);
+    const pano = params.get('pano');
+    const title = params.get('title') || '360° view';
+    document.title = 'austingraph — ' + title;
+
+    const errBox = document.getElementById('err');
+    if (!pano) {
+      errBox.style.display = 'block';
+      errBox.textContent = 'No panorama specified. Open this page via a "360° view" link ' +
+        'on a parcel, or pass ?pano=<image URL>.';
+    } else {
+      const viewer = pannellum.viewer('pano', {
+        type: 'equirectangular',
+        panorama: pano,
+        autoLoad: true,
+        compass: true,
+        title: title,
+        orientationOnByDefault: true,   // starts gyro where no permission is needed
+      });
+
+      const btn = document.getElementById('motion-btn');
+      const needsPermission = typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission === 'function';
+      if (needsPermission) {
+        btn.style.display = 'block';
+        btn.addEventListener('click', () => {
+          DeviceOrientationEvent.requestPermission()
+            .then((state) => { if (state === 'granted') viewer.startOrientation(); })
+            .catch(() => {})
+            .finally(() => { btn.style.display = 'none'; });
+        });
+      }
+      viewer.on('error', (msg) => {
+        errBox.style.display = 'block';
+        errBox.textContent = 'Could not load the panorama (' + msg + ').';
+      });
+    }
+  </script>
+</body>
+</html>
