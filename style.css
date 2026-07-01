@@ -843,20 +843,56 @@ body {
 }
 
 /* Live maps row: parcel mini-map (2/3) + city locator (1/3) */
-/* Single main map, placed at the end of the report. */
 #report-maps {
-  margin-top: 18px;
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
 }
 #report-map {
-  width: 100%;
-  height: 420px;
+  flex: 2;
+  height: 380px;
+  border-radius: 4px;
+  position: relative;
+  overflow: hidden;
+}
+#report-locator {
+  flex: 1;
+  height: 380px;
   border-radius: 4px;
   position: relative;
   overflow: hidden;
 }
 @media (max-width: 620px) {
-  #report-map { height: 320px; }
+  #report-maps { flex-direction: column; }
+  #report-map, #report-locator { flex: none; height: 300px; }
 }
+
+/* On-map basemap control: Aerial / Street / Buildings (top-left) */
+.report-basemap-ctrl {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 5;
+  display: flex;
+  gap: 4px;
+}
+.report-basemap-btn {
+  background: #fff;
+  border: 1px solid #c8c8c8;
+  border-radius: 4px;
+  padding: 4px 9px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #222;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.report-basemap-btn:hover { background: #f2f2f2; }
+.report-basemap-btn.active { background: #e8a838; border-color: #d99a20; color: #111; }
+/* Separate the independent Buildings toggle from the Aerial/Street pair */
+.report-basemap-sep { margin-left: 8px; }
 
 /* Overlay control on each report map (floating button + checkbox dropdown) */
 .report-ovl-ctrl {
@@ -1256,24 +1292,19 @@ body {
     print-color-adjust: exact;
   }
   #report-close, #report-toolbar { display: none !important; }
-  /* The map prints as a baked snapshot on its own LANDSCAPE last page, so the
-     wide parcel map fills the sheet. The live map is hidden. */
-  @page mapLandscape { size: landscape; margin: 0.35in; }
-  #report-maps { display: none !important; }
+  /* On-screen the live maps sit at the top; in print they're replaced by a single
+     baked snapshot of the main map (with the user's drawings) rendered at the END
+     of the report (its DOM element is last). Portrait — no page rotation. */
+  #report-map, #report-locator { display: none !important; }
   #report-print-maps {
     display: block !important;
-    page: mapLandscape;
-    break-before: page;
-    text-align: center;
-    margin: 0;
+    margin-top: 16px;
+    break-inside: avoid;
   }
   #report-print-img {
     display: block;
-    width: auto;
+    width: 100%;
     height: auto;
-    max-width: 100%;
-    max-height: 88vh;   /* partially fill the landscape page */
-    margin: 0 auto;
     border-radius: 4px;
   }
   /* Keep individual sections from splitting awkwardly across page breaks */

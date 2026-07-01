@@ -11,7 +11,9 @@
   const closeBtn  = document.getElementById('report-close');
   const toolbar   = document.getElementById('report-toolbar');
   const mapEl     = document.getElementById('report-map');
-  const printImg  = document.getElementById('report-print-img');
+  const locatorEl = document.getElementById('report-locator');
+  const printImg    = document.getElementById('report-print-img');
+  const printImgLoc = document.getElementById('report-print-img-locator');
   const dataEl    = document.getElementById('report-data');
   const notesEl   = document.getElementById('report-notes');
   const footerEl  = document.getElementById('report-footer-bar');
@@ -20,8 +22,14 @@
 
   // ── Module state ─────────────────────────────────────────────────────────────
   let reportMap    = null;   // MapLibre instance, created lazily and reused
+  // Resets the on-map basemap control (Aerial active, Buildings off, flat pitch);
+  // assigned when attachBasemapControl runs. No-op until then.
+  let resetBasemapControl = () => {};
   let sourcesReady = false;  // true once load handler has added sources+layers
   let pendingGeom  = null;   // parcel geometry waiting to be drawn
+
+  let locatorMap    = null;  // small city-context map, created lazily and reused
+  let locatorMarker = null;  // marker pinning the parcel within Austin
 
   let draw       = null;
   let measuring  = false;
@@ -41,9 +49,33 @@
         tileSize: 256,
         attribution: 'Tiles &copy; Esri',
       },
+      street: {
+        type: 'raster',
+        tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}'],
+        tileSize: 256,
+        attribution: 'Tiles &copy; Esri',
+      },
+      // Vector buildings (same source the main map uses) for the Buildings toggle.
+      openmaptiles: { type: 'vector', url: 'https://tiles.openfreemap.org/planet' },
     },
     layers: [
       { id: 'bg-aerial', type: 'raster', source: 'aerial' },
+      { id: 'bg-street', type: 'raster', source: 'street', layout: { visibility: 'none' } },
+      // Extruded 3D building footprints — hidden until the Buildings button is pressed.
+      {
+        id: 'rp-buildings-3d',
+        type: 'fill-extrusion',
+        source: 'openmaptiles',
+        'source-layer': 'building',
+        minzoom: 13,
+        layout: { visibility: 'none' },
+        paint: {
+          'fill-extrusion-color': 'hsl(35, 8%, 75%)',
+          'fill-extrusion-height': ['get', 'render_height'],
+          'fill-extrusion-base': ['get', 'render_min_height'],
+          'fill-extrusion-opacity': 0.85,
+        },
+      },
     ],
   };
 
@@ -154,6 +186,7 @@
       reportMap.on('click', onMeasureClick);
 
       attachOverlayControl(reportMap, mapEl, 'rp-parcel-outline');
+      attachBasemapControl(reportMap, mapEl);
 
       sourcesReady = true;
       reportMap.resize();
@@ -161,6 +194,51 @@
     });
   }
 
+  // ── City locator map (1/3) ─────────────────────────────────────────────────────
+  // A simple, non-interactive map of Austin (Esri street basemap shows I-35,
+  // US-183/Research, MoPac and city labels) with a marker on the parcel, so the
+  // reader sees where in the city the parcel sits.
+  const AUSTIN_CENTER = [-97.78, 30.30];
+  const LOCATOR_STYLE = {
+    version: 8,
+    glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
+    sources: {
+      locator: {
+        type: 'raster',
+        tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}'],
+        tileSize: 256,
+        attribution: 'Tiles &copy; Esri',
+      },
+    },
+    layers: [{ id: 'locator-bg', type: 'raster', source: 'locator' }],
+  };
+
+  function updateLocator() {
+    if (!locatorMap || !pendingGeom) return;
+    const [lon, lat] = centroid(pendingGeom);
+    if (!locatorMarker) {
+      locatorMarker = new maplibregl.Marker({ color: '#c0392b' }).setLngLat([lon, lat]).addTo(locatorMap);
+    } else {
+      locatorMarker.setLngLat([lon, lat]);
+    }
+  }
+
+  function createLocatorMap() {
+    locatorMap = new maplibregl.Map({
+      container: locatorEl,
+      style: LOCATOR_STYLE,
+      center: AUSTIN_CENTER,
+      zoom: 9.3,
+      interactive: false,
+      attributionControl: false,
+      preserveDrawingBuffer: true,   // so its canvas can be baked for printing
+    });
+    locatorMap.on('load', () => {
+      locatorMap.resize();
+      updateLocator();
+      attachOverlayControl(locatorMap, locatorEl);
+    });
+  }
 
   // ── Overlay control (reused on each report map) ────────────────────────────────
   // Reuses window.AG.OVERLAYS (defined in maptools.js) — the same GeoJSON files /
@@ -252,6 +330,57 @@
     });
   }
 
+  // ── On-map basemap control (Aerial / Street / Buildings) ──────────────────────
+  // A floating button row in the map's top-left corner (the Overlays control sits
+  // top-right). Aerial/Street are a mutually-exclusive pair; Buildings is an
+  // independent toggle that shows extruded 3D footprints — and tilts the map so the
+  // extrusions are actually visible (they don't render at pitch 0).
+  function attachBasemapControl(targetMap, container) {
+    if (!container) return;
+
+    const ctrl = document.createElement('div');
+    ctrl.className = 'report-basemap-ctrl';
+
+    const mkBtn = (text, active, extraClass) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'report-basemap-btn' + (extraClass ? ' ' + extraClass : '');
+      b.textContent = text;
+      if (active) b.classList.add('active');
+      return b;
+    };
+
+    const aerialBtn = mkBtn('Aerial', true);
+    const streetBtn = mkBtn('Street', false);
+    const bldgBtn   = mkBtn('Buildings', false, 'report-basemap-sep');
+
+    const showAerial = (aerial) => {
+      if (targetMap.getLayer('bg-aerial')) targetMap.setLayoutProperty('bg-aerial', 'visibility', aerial ? 'visible' : 'none');
+      if (targetMap.getLayer('bg-street')) targetMap.setLayoutProperty('bg-street', 'visibility', aerial ? 'none' : 'visible');
+      aerialBtn.classList.toggle('active', aerial);
+      streetBtn.classList.toggle('active', !aerial);
+    };
+    const setBuildings = (on) => {
+      bldgBtn.classList.toggle('active', on);
+      if (targetMap.getLayer('rp-buildings-3d')) {
+        targetMap.setLayoutProperty('rp-buildings-3d', 'visibility', on ? 'visible' : 'none');
+      }
+      targetMap.easeTo({ pitch: on ? 50 : 0, duration: 500 });
+    };
+
+    aerialBtn.addEventListener('click', () => showAerial(true));
+    streetBtn.addEventListener('click', () => showAerial(false));
+    bldgBtn.addEventListener('click', () => setBuildings(!bldgBtn.classList.contains('active')));
+
+    ctrl.appendChild(aerialBtn);
+    ctrl.appendChild(streetBtn);
+    ctrl.appendChild(bldgBtn);
+    container.appendChild(ctrl);
+
+    // Each report opens flat, aerial, buildings off.
+    resetBasemapControl = () => { showAerial(true); setBuildings(false); };
+  }
+
   // ── Terra-draw annotation ─────────────────────────────────────────────────────
   function initDraw() {
     const TD  = window.terraDraw;
@@ -337,8 +466,8 @@
   function buildToolbar() {
     toolbar.innerHTML = '';
 
-    // The toolbar is just annotation tools + print; the map keeps only its
-    // Overlays control (e.g. Flood Zone).
+    // Basemap (Aerial/Street) + Buildings now live on the map itself
+    // (attachBasemapControl); the toolbar is just annotation tools + print.
     const row2 = document.createElement('div');
     row2.className = 'report-tb-row';
 
@@ -392,10 +521,12 @@
     printBtn.className = 'primary';
     printBtn.textContent = 'Print/Save PDF';
     printBtn.addEventListener('click', () => {
-      // Bake the live map (with any drawings) into its print <img>, then print.
-      // The live map is hidden at @media print; the snapshot prints on its own
-      // landscape last page.
-      snapshotMap(reportMap, printImg).then(() => window.print());
+      // Bake BOTH live maps into their print <img>s, then print. The maps are
+      // hidden at @media print and these snapshots are shown side by side.
+      Promise.all([
+        snapshotMap(reportMap, printImg),
+        snapshotMap(locatorMap, printImgLoc),
+      ]).then(() => window.print());
     });
     row2.appendChild(printBtn);
     toolbar.appendChild(row2);
@@ -890,6 +1021,7 @@
     notesEl.value = '';
     printImg.src = '';
     printImg.style.display = 'none';
+    if (printImgLoc) { printImgLoc.src = ''; printImgLoc.style.display = 'none'; }
     measuring = false;
     measurePts = [];
 
@@ -908,13 +1040,21 @@
     pendingGeom = data.geometry;
 
     if (!reportMap) {
-      // Double rAF: first frame commits layout; second reads correct dimensions.
+      // Double rAF: first frame commits display:flex layout; second reads correct dimensions.
       requestAnimationFrame(() => requestAnimationFrame(() => createReportMap()));
     } else {
       reportMap.resize();
       if (draw) draw.clear();
       clearMeasure();
+      resetBasemapControl();   // back to flat / aerial / buildings off
       applyPending();
+    }
+
+    if (!locatorMap) {
+      requestAnimationFrame(() => requestAnimationFrame(() => createLocatorMap()));
+    } else {
+      locatorMap.resize();
+      updateLocator();
     }
   }
 

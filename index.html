@@ -6,7 +6,7 @@
   <title>austingraph</title>
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
   <link rel="stylesheet" href="https://unpkg.com/mapillary-js@4.1.2/dist/mapillary.css" />
-  <link rel="stylesheet" href="style.css?v=20260630g" />
+  <link rel="stylesheet" href="style.css?v=20260630h" />
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-9MCJVVWHVE"></script>
   <script>
@@ -134,18 +134,20 @@
       <p id="report-subtitle" class="report-subtitle"></p>
       <!-- Toolbar injected by report.js -->
       <div id="report-toolbar"></div>
+      <!-- Live maps: parcel mini-map (2/3) + city locator (1/3), at the top of the
+           on-screen report. Hidden at print. -->
+      <div id="report-maps">
+        <div id="report-map"></div>
+        <div id="report-locator"></div>
+      </div>
       <div id="report-data"></div>
       <div id="report-notes-wrap">
         <label for="report-notes" class="report-section-label">Notes</label>
         <textarea id="report-notes" placeholder="Add notes for this parcel…"></textarea>
       </div>
       <div id="report-footer-bar"></div>
-      <!-- Main map at the end (with the user's drawings). Prints on its own
-           landscape last page. -->
-      <div id="report-maps">
-        <div id="report-map"></div>
-      </div>
-      <!-- Print-only snapshot baked at print time. -->
+      <!-- Print-only: baked snapshot of the main map (with the user's drawings),
+           rendered at the END of the printed report. Invisible on screen. -->
       <div id="report-print-maps">
         <img id="report-print-img" alt="Parcel map" />
       </div>
@@ -162,7 +164,7 @@
   <script src="https://unpkg.com/mapillary-js@4.1.2/dist/mapillary.js"></script>
   <script src="streetview.js?v=20260630a"></script>
   <script src="feasibility.js?v=20260630c"></script>
-  <script src="report.js?v=20260630f"></script>
+  <script src="report.js?v=20260630g"></script>
   <script defer src="https://unpkg.com/maplibre-contour@0.0.5/dist/index.min.js"></script>
   <script defer src="https://unpkg.com/terra-draw/dist/terra-draw.umd.js"></script>
   <script defer src="https://unpkg.com/terra-draw-maplibre-gl-adapter/dist/terra-draw-maplibre-gl-adapter.umd.js"></script>
