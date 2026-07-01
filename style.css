@@ -306,6 +306,13 @@ body {
 }
 #sv-google:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
 
+/* ── On-site AR (panel) ───────────────────────────────────────────────────── */
+/* AR Quick Look launcher: <a rel="ar"> must have an <img> as its first child
+   (Apple's trigger); Safari overlays its own AR badge on the image corner. */
+.ar-quicklook { display: block; margin-bottom: 8px; }
+.ar-quicklook img { display: block; width: 100%; height: auto; border-radius: 8px; }
+#panel-ar .panel-links { margin-top: 2px; }
+
 /* ── Connections (knowledge graph) ────────────────────────────────────────── */
 .conn-group { display: flex; flex-direction: column; gap: 10px; }
 .conn-group:not(:empty) { margin-top: 10px; }
